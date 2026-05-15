@@ -1,7 +1,7 @@
 <h1 align="center">Codez</h1>
 
 <p align="center">
-  <strong>A Codex-compatible runtime fork for local agents, plugin hooks, and practical context control.</strong>
+  <strong>A Codex-compatible runtime fork for local agents, token-aware context control, App Server v2, and plugin hooks.</strong>
 </p>
 
 <p align="center">
@@ -35,10 +35,30 @@ runtime work that benefits from moving faster than upstream.
 ## Why Codez Exists
 
 - keep a Codex-compatible CLI/runtime while experimenting with local-agent needs
+- reduce wasted tokens from stale tool, reasoning, and context history
 - support plugin and hook workflows that can harden shell usage
+- expose App Server v2 surfaces for local clients and future gateways
 - make context-pressure and prompt-history behavior easier to evolve
 - provide a clear core layer for future gateway projects without baking a
   specific gateway into the runtime
+
+## Core Additions
+
+Codez is not only a renamed README around upstream Codex. The fork carries
+runtime work aimed at long local-agent sessions:
+
+- prompt-history pruning before model sampling: stale context messages, older
+  reasoning items, tool calls, and tool outputs can be removed before the next
+  request while preserving the active turn and image-output dependencies
+- compaction-aware pruning: the remote/autocompact path can apply the same
+  pruning and trim function-call history before compaction, reducing context
+  pressure before a summarization turn
+- App Server v2: a local app/server protocol surface for richer clients,
+  gateway experiments, thread operations, hook/catalog inspection, and command
+  event flows
+- plugin hook compatibility: Codez keeps plugin-loaded hook paths usable for
+  `PreToolUse` workflows, so optional safety plugins such as RTK can run as
+  normal runtime extensions
 
 ## What Is Different
 

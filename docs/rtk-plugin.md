@@ -1,7 +1,8 @@
 # Optional RTK Codex Plugin
 
 The RTK Codex Plugin is the optional shell-safety layer for Codez-compatible
-runtimes.
+runtimes. It relies on a runtime that actually loads plugin hooks for shell
+calls; Codez keeps that compatibility surface as a supported fork feature.
 
 Public repo:
 
@@ -17,6 +18,10 @@ https://github.com/Krablante/rtk-codex-plugin
 
 The output guard works even when the `rtk` binary is not installed. Rewrite mode
 requires `rtk` in `PATH`.
+
+RTK complements Codez's built-in prompt-history pruning. Codez reduces stale
+tool/reasoning/context history before sampling and compaction; RTK reduces
+risky shell output before it becomes model-visible history.
 
 ## Example Config
 
