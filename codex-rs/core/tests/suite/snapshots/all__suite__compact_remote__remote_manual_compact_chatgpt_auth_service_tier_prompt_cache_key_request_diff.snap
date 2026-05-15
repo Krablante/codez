@@ -1,0 +1,101 @@
+---
+source: core/tests/suite/compact_remote.rs
+expression: "context_snapshot::format_request_body_diff_snapshot(scenario,\n\"Last Normal /responses Request\", &normal_request,\n\"Remote /responses/compact Request\", &compact_request,\n&ContextSnapshotOptions::default(),)"
+---
+Scenario: After five varied ChatGPT-auth turns, remote manual compaction reuses service_tier and prompt_cache_key, carries accumulated prompt history, and omits responses-only fields.
+
+--- Last Normal /responses Request
++++ Remote /responses/compact Request
+-  "client_metadata": {
+-    "x-codex-installation-id": "<UUID>"
+-  },
+-  "include": [
+-    "reasoning.encrypted_content"
+-  ],
++          "text": "<ENVIRONMENT_CONTEXT:cwd=<CWD>>",
++          "type": "input_text"
++        }
++      ],
++      "role": "user",
++      "type": "message"
++    },
++    {
++      "content": [
++        {
++          "text": "turn two raw content",
++          "type": "reasoning_text"
++        }
++      ],
++      "encrypted_content": "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYnR1cm4gdHdvIHJhdyBjb250ZW50",
++      "summary": [
++        {
++          "text": "TURN_TWO_REASONING",
++          "type": "summary_text"
++        }
++      ],
++      "type": "reasoning"
++    },
++    {
++      "content": [
++        {
++      "arguments": "{}",
++      "call_id": "turn-three-call",
++      "name": "test_tool",
++      "type": "function_call"
++    },
++    {
++      "call_id": "turn-three-call",
++      "output": "unsupported call: test_tool",
++      "type": "function_call_output"
++    },
++    {
++      "action": {
++        "command": [
++          "/bin/echo",
++          "TURN_FOUR_LOCAL_SHELL"
++        ],
++        "env": null,
++        "timeout_ms": null,
++        "type": "exec",
++        "user": null,
++        "working_directory": null
++      },
++      "call_id": "turn-four-local-shell",
++      "status": "completed",
++      "type": "local_shell_call"
++    },
++    {
++      "call_id": "turn-four-local-shell",
++      "output": "execution error: Sandbox(Signal(6))",
++      "type": "function_call_output"
++    },
++    {
++    },
++    {
++      "content": [
++        {
++          "text": "turn five raw content",
++          "type": "reasoning_text"
++        }
++      ],
++      "encrypted_content": "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYnR1cm4gZml2ZSByYXcgY29udGVudA==",
++      "summary": [
++        {
++          "text": "TURN_FIVE_REASONING",
++          "type": "summary_text"
++        }
++      ],
++      "type": "reasoning"
++    },
++    {
++      "content": [
++        {
++          "text": "TURN_FIVE_ASSISTANT",
++          "type": "output_text"
++        }
++      ],
++      "role": "assistant",
++      "type": "message"
+-  "store": false,
+-  "stream": true,
+-  "tool_choice": "auto",
