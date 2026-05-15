@@ -50,6 +50,9 @@ runtime work aimed at long local-agent sessions:
 - prompt-history pruning before model sampling: stale context messages, older
   reasoning items, tool calls, and tool outputs can be removed before the next
   request while preserving the active turn and image-output dependencies
+- goal-continuation pruning: automatic goal follow-up turns are treated as
+  fresh prompt boundaries, so previous tool-heavy work can be trimmed while the
+  active goal objective remains visible
 - compaction-aware pruning: the remote/autocompact path can apply the same
   pruning and trim function-call history before compaction, reducing context
   pressure before a summarization turn

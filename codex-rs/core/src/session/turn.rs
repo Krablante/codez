@@ -384,8 +384,14 @@ pub(crate) async fn run_turn(
     // However, we defer that drain until after sampling in two cases:
     // 1. At the start of a turn, so the fresh user prompt in `input` gets sampled first.
     // 2. After auto-compact, when model/tool continuation needs to resume before any steer.
+    // Goal continuations are queued as pending developer input while idle; they should still
+    // behave like fresh turns for prompt-history pruning.
+    let is_thread_goal_continuation_turn = sess
+        .is_thread_goal_continuation_turn(&turn_context.sub_id)
+        .await;
     let mut can_drain_pending_input = input.is_empty();
-    let mut allow_prompt_history_pruning = !input.is_empty();
+    let mut allow_prompt_history_pruning = !input.is_empty() || is_thread_goal_continuation_turn;
+    let mut sampling_request_started = false;
 
     loop {
         if run_pending_session_start_hooks(&sess, &turn_context).await {
@@ -429,7 +435,9 @@ pub(crate) async fn run_turn(
         }
 
         let has_accepted_pending_input = !accepted_pending_input.is_empty();
-        if has_accepted_pending_input {
+        if has_accepted_pending_input
+            && (!is_thread_goal_continuation_turn || sampling_request_started)
+        {
             // Same-turn/live steering appends user input inside an active run.
             // Do not prune around that new boundary; the model still needs the
             // tool/reasoning chain that produced the current in-flight state.
@@ -478,6 +486,7 @@ pub(crate) async fn run_turn(
         .await
         {
             Ok(sampling_request_output) => {
+                sampling_request_started = true;
                 let SamplingRequestResult {
                     needs_follow_up: model_needs_follow_up,
                     last_agent_message: sampling_request_last_agent_message,
@@ -1007,7 +1016,7 @@ pub(crate) fn build_prompt(
 }
 
 pub(crate) fn prune_prompt_history_for_sampling(items: Vec<ResponseItem>) -> Vec<ResponseItem> {
-    let Some(last_turn_boundary) = items.iter().rposition(is_user_turn_boundary) else {
+    let Some(last_turn_boundary) = items.iter().rposition(is_prompt_pruning_turn_boundary) else {
         return items;
     };
 
@@ -1038,6 +1047,28 @@ pub(crate) fn prune_prompt_history_for_sampling(items: Vec<ResponseItem>) -> Vec
             }
         })
         .collect()
+}
+
+fn is_prompt_pruning_turn_boundary(item: &ResponseItem) -> bool {
+    is_user_turn_boundary(item) || is_goal_continuation_prompt_message(item)
+}
+
+fn is_goal_continuation_prompt_message(item: &ResponseItem) -> bool {
+    let ResponseItem::Message { role, content, .. } = item else {
+        return false;
+    };
+    if role != "developer" {
+        return false;
+    }
+
+    content.iter().any(|item| {
+        matches!(
+            item,
+            ContentItem::InputText { text }
+                if text.starts_with("Continue working toward the active thread goal.")
+                    && text.contains("<untrusted_objective>")
+        )
+    })
 }
 
 fn is_stale_context_prunable_history_item(item: &ResponseItem) -> bool {

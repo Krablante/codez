@@ -7696,6 +7696,110 @@ async fn active_goal_continuation_runs_again_after_no_tool_turn() -> anyhow::Res
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn active_goal_continuation_request_prunes_stale_tool_history() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let mut builder = test_codex().with_config(|config| {
+        config
+            .features
+            .enable(Feature::Goals)
+            .expect("goal mode should be enableable in tests");
+    });
+    let test = builder.build(&server).await?;
+    let responses = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_function_call(
+                    "call-create-goal",
+                    "create_goal",
+                    r#"{"objective":"write a benchmark note"}"#,
+                ),
+                ev_completed("resp-1"),
+            ]),
+            sse(vec![
+                ev_assistant_message("msg-1", "Draft ready."),
+                ev_completed("resp-2"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-3"),
+                ev_function_call(
+                    "call-complete-goal",
+                    "update_goal",
+                    r#"{"status":"complete"}"#,
+                ),
+                ev_completed("resp-3"),
+            ]),
+            sse(vec![
+                ev_assistant_message("msg-2", "Goal complete."),
+                ev_completed("resp-4"),
+            ]),
+        ],
+    )
+    .await;
+
+    test.codex
+        .submit(Op::UserInput {
+            environments: None,
+            items: vec![UserInput::Text {
+                text: "write a benchmark note".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+        })
+        .await?;
+
+    let mut completed_turns = 0;
+    tokio::time::timeout(std::time::Duration::from_secs(8), async {
+        loop {
+            let event = test.codex.next_event().await?;
+            if matches!(event.msg, EventMsg::TurnComplete(_)) {
+                completed_turns += 1;
+                if completed_turns == 2 {
+                    return anyhow::Ok(());
+                }
+            }
+        }
+    })
+    .await??;
+
+    let requests = responses.requests();
+    assert_eq!(4, requests.len());
+    let continuation_request = &requests[2];
+    assert!(
+        !continuation_request.has_function_call("call-create-goal"),
+        "goal continuation request should prune stale create_goal function call"
+    );
+    assert!(
+        continuation_request
+            .function_call_output_text("call-create-goal")
+            .is_none(),
+        "goal continuation request should prune stale create_goal output"
+    );
+    assert!(
+        continuation_request
+            .message_input_texts("user")
+            .iter()
+            .any(|text| text.contains("write a benchmark note")),
+        "goal continuation request should retain the original user objective"
+    );
+    assert!(
+        continuation_request
+            .message_input_texts("developer")
+            .iter()
+            .any(
+                |text| text.contains("Continue working toward the active thread goal.")
+                    && text.contains("<untrusted_objective>")
+                    && text.contains("write a benchmark note"),
+            ),
+        "goal continuation request should retain the current goal continuation prompt"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pending_request_user_input_does_not_spawn_extra_goal_continuation() -> anyhow::Result<()> {
     let server = start_mock_server().await;
     let mut builder = test_codex().with_config(|config| {

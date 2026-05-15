@@ -789,6 +789,15 @@ impl Session {
         *self.goal_runtime.continuation_turn_id.lock().await = Some(turn_id);
     }
 
+    pub(crate) async fn is_thread_goal_continuation_turn(&self, turn_id: &str) -> bool {
+        self.goal_runtime
+            .continuation_turn_id
+            .lock()
+            .await
+            .as_deref()
+            == Some(turn_id)
+    }
+
     async fn take_thread_goal_continuation_turn(&self, turn_id: &str) -> bool {
         let mut continuation_turn_id = self.goal_runtime.continuation_turn_id.lock().await;
         if continuation_turn_id.as_deref() == Some(turn_id) {

@@ -200,6 +200,41 @@ fn prune_prompt_history_keeps_latest_turn_window_and_drops_older_ephemeral_items
 }
 
 #[test]
+fn prune_prompt_history_keeps_goal_continuation_prompt_and_drops_stale_tools() {
+    let goal_continuation_prompt = developer_message(
+        "Continue working toward the active thread goal.\n\n<untrusted_objective>\nkeep going\n</untrusted_objective>",
+    );
+
+    let pruned = prune_prompt_history_for_sampling(vec![
+        user_message("first prompt"),
+        ResponseItem::FunctionCall {
+            id: None,
+            name: "shell_command".to_string(),
+            namespace: None,
+            arguments: "{\"command\":\"printf old\"}".to_string(),
+            call_id: "old-call".to_string(),
+        },
+        ResponseItem::FunctionCallOutput {
+            call_id: "old-call".to_string(),
+            output: FunctionCallOutputPayload::from_text("old tool output".to_string()),
+        },
+        assistant_message("first answer"),
+        goal_continuation_prompt.clone(),
+    ]);
+
+    assert!(!pruned.iter().any(
+        |item| matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "old-call")
+    ));
+    assert!(
+        !pruned
+            .iter()
+            .any(|item| matches!(item, ResponseItem::FunctionCallOutput { call_id, .. } if call_id == "old-call"))
+    );
+    assert!(pruned.contains(&user_message("first prompt")));
+    assert!(pruned.contains(&goal_continuation_prompt));
+}
+
+#[test]
 fn prune_prompt_history_leaves_items_without_turn_boundary_unchanged() {
     let items = vec![
         developer_message("<permissions instructions>\npermissions"),
