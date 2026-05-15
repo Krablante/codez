@@ -14,8 +14,9 @@ Fork-specific behavior should be explicit and optional where possible.
 | Remote/autocompact pruning | upstream behavior | Codez compaction path | Applies pruning before remote compaction and can trim function-call history to reduce context pressure. |
 | App Server v2 | upstream-compatible where present | active fork surface | Local client/gateway protocol surface for thread operations, command events, hook/catalog inspection, and richer integrations. |
 | Plugin loading | upstream-compatible where present | active fork surface | Used for local plugin workflows and hook experiments. |
-| Plugin hooks | optional feature | supported Codez use case | Enable via config when a runtime supports plugin hooks; Codez keeps plugin-loaded hook paths usable for RTK-style workflows. |
+| Plugin hooks | optional feature | supported Codez use case | Enable via config when a runtime supports plugin hooks; Codez keeps plugin-loaded hook paths usable for RTK/Pitlane-style workflows. |
 | RTK Codex Plugin | external | optional external plugin | Adds shell rewrite and bounded-output guard behavior. |
+| Pitlane Codex Plugin | external | optional external plugin | Adds indexed code-navigation rewrites through host-local Pitlane CLI. |
 | Gateway layer | not required | not required | Gateway projects can use Codez, but Codez should not depend on them. |
 
 ## Token-Control Shape
@@ -31,9 +32,10 @@ Codez includes runtime paths for reducing token waste in long sessions:
 - function-call history can be trimmed before remote compaction when the context
   window is already under pressure
 
-This is separate from shell-output guarding. Prompt-history pruning reduces what
-Codez sends to the model; RTK-style plugins reduce risky shell output before it
-enters the conversation.
+This is separate from hook-level shell changes. Prompt-history pruning reduces
+what Codez sends to the model; RTK reduces risky shell output before it enters
+the conversation, and Pitlane can replace safe source-navigation reads with
+bounded indexed CLI calls.
 
 ## Plugin Hook Shape
 
@@ -51,6 +53,13 @@ Example feature flags:
 plugins = true
 plugin_hooks = true
 ```
+
+Optional public companion plugins:
+
+- [RTK Codex Plugin](https://github.com/Krablante/rtk-codex-plugin) for shell
+  token-safety and bounded output
+- [Pitlane Codex Plugin](https://github.com/Krablante/pitlane-codex-plugin) for
+  indexed code-navigation rewrites
 
 ## Boundaries
 

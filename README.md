@@ -22,6 +22,8 @@
   ·
   <a href="./docs/rtk-plugin.md">RTK Plugin</a>
   ·
+  <a href="./docs/pitlane-plugin.md">Pitlane Plugin</a>
+  ·
   <a href="./docs/getting-started.md">Getting Started</a>
   ·
   <a href="./docs/config.md">Config</a>
@@ -60,8 +62,8 @@ runtime work aimed at long local-agent sessions:
   gateway experiments, thread operations, hook/catalog inspection, and command
   event flows
 - plugin hook compatibility: Codez keeps plugin-loaded hook paths usable for
-  `PreToolUse` workflows, so optional safety plugins such as RTK can run as
-  normal runtime extensions
+  `PreToolUse` workflows, so optional plugins such as RTK and Pitlane can run
+  as normal runtime extensions
 
 ## What Is Different
 
@@ -74,12 +76,14 @@ The public stack shape is:
 ```text
 Codez runtime
   -> optional RTK Codex Plugin for shell token-safety
+  -> optional Pitlane Codex Plugin for indexed code navigation
   -> Telegram gateway layer later (Teledex coming next)
 ```
 
-RTK is already published separately:
+RTK and Pitlane are published separately:
 
 https://github.com/Krablante/rtk-codex-plugin
+https://github.com/Krablante/pitlane-codex-plugin
 
 The Telegram gateway layer is not linked here yet because its public repo has
 not been published.
@@ -107,6 +111,7 @@ by OpenAI:
 
 - [Compatibility matrix](./docs/compatibility.md)
 - [Optional RTK plugin integration](./docs/rtk-plugin.md)
+- [Optional Pitlane plugin integration](./docs/pitlane-plugin.md)
 - [Installing and building](./docs/install.md)
 - [Configuration](./docs/config.md)
 - [Contributing](./docs/contributing.md)

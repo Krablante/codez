@@ -21,7 +21,8 @@ requires `rtk` in `PATH`.
 
 RTK complements Codez's built-in prompt-history pruning. Codez reduces stale
 tool/reasoning/context history before sampling and compaction; RTK reduces
-risky shell output before it becomes model-visible history.
+risky shell output before it becomes model-visible history. Pitlane can be
+enabled separately for indexed source-navigation rewrites.
 
 ## Example Config
 
@@ -39,6 +40,7 @@ enabled = true
 
 ## Stack Role
 
-Codez is the runtime. RTK is an optional plugin. A gateway can install or sync
-the plugin for worker machines, but Codez itself should stay usable without any
-gateway.
+Codez is the runtime. RTK is an optional plugin. Pitlane is another optional
+plugin that should be configured after RTK when both are enabled. A gateway can
+install or sync plugins for worker machines, but Codez itself should stay usable
+without any gateway.
