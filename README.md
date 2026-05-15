@@ -71,12 +71,15 @@ The public stack shape is:
 ```text
 Codez runtime
   -> optional RTK Codex Plugin for shell token-safety
-  -> optional gateway layer later
+  -> Telegram gateway layer later (Teledex coming next)
 ```
 
 RTK is already published separately:
 
 https://github.com/Krablante/rtk-codex-plugin
+
+The Telegram gateway layer is not linked here yet because its public repo has
+not been published.
 
 ## Quick Start
 
