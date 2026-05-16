@@ -63,6 +63,60 @@ fn message_input_texts(body: &Value, role: &str) -> Vec<String> {
         .collect()
 }
 
+fn message_output_texts(body: &Value, role: &str) -> Vec<String> {
+    body.get("input")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("message"))
+        .filter(|item| item.get("role").and_then(Value::as_str) == Some(role))
+        .filter_map(|item| item.get("content").and_then(Value::as_array))
+        .flatten()
+        .filter(|span| span.get("type").and_then(Value::as_str) == Some("output_text"))
+        .filter_map(|span| span.get("text").and_then(Value::as_str).map(str::to_owned))
+        .collect()
+}
+
+fn input_has_reasoning_summary(body: &Value, summary_text: &str) -> bool {
+    body.get("input")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|item| {
+            item.get("type").and_then(Value::as_str) == Some("reasoning")
+                && item
+                    .get("summary")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .any(|summary| {
+                        summary.get("text").and_then(Value::as_str) == Some(summary_text)
+                    })
+        })
+}
+
+fn input_has_function_call(body: &Value, call_id: &str) -> bool {
+    body.get("input")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|item| {
+            item.get("type").and_then(Value::as_str) == Some("function_call")
+                && item.get("call_id").and_then(Value::as_str) == Some(call_id)
+        })
+}
+
+fn input_has_function_call_output(body: &Value, call_id: &str) -> bool {
+    body.get("input")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|item| {
+            item.get("type").and_then(Value::as_str) == Some("function_call_output")
+                && item.get("call_id").and_then(Value::as_str) == Some(call_id)
+        })
+}
+
 fn chunk(event: Value) -> StreamingSseChunk {
     StreamingSseChunk {
         gate: None,
@@ -171,6 +225,22 @@ async fn submit_queue_only_agent_mail(codex: &CodexThread, text: &str) {
         matches!(event, EventMsg::RealtimeConversationListVoicesResponse(_))
     })
     .await;
+}
+
+async fn submit_trigger_turn_agent_mail(codex: &CodexThread, text: &str) {
+    codex
+        .submit(Op::InterAgentCommunication {
+            communication: InterAgentCommunication::new(
+                AgentPath::try_from("/root/worker")
+                    .unwrap_or_else(|err| panic!("worker path should parse: {err}")),
+                AgentPath::root(),
+                Vec::new(),
+                text.to_string(),
+                /*trigger_turn*/ true,
+            ),
+        })
+        .await
+        .unwrap_or_else(|err| panic!("submit trigger-turn agent mail: {err}"));
 }
 
 async fn wait_for_reasoning_item_started(codex: &CodexThread) {
@@ -482,6 +552,228 @@ async fn user_input_does_not_preempt_after_reasoning_item() {
     assert_two_responses_input_snapshot(
         "pending_input_user_input_no_preempt_after_reasoning",
         &requests,
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn steered_user_input_prunes_stale_previous_turn_items_but_keeps_active_chain() {
+    let (gate_current_done_tx, gate_current_done_rx) = oneshot::channel();
+
+    let stale_chunks = vec![
+        chunk(ev_response_created("resp-stale")),
+        chunk(ev_reasoning_item("old-reasoning", &["old thinking"], &[])),
+        chunk(ev_function_call(
+            "old-call",
+            "shell",
+            r#"{"command":"echo stale tool call"}"#,
+        )),
+        chunk(ev_completed("resp-stale")),
+    ];
+
+    let stale_followup_chunks = vec![
+        chunk(ev_response_created("resp-stale-followup")),
+        chunk(ev_message_item_added("msg-stale", "")),
+        chunk(ev_output_text_delta("stale answer")),
+        chunk(ev_message_item_done("msg-stale", "stale answer")),
+        chunk(ev_completed("resp-stale-followup")),
+    ];
+
+    let active_chunks = vec![
+        chunk(ev_response_created("resp-current")),
+        chunk(ev_reasoning_item_added(
+            "current-reasoning",
+            &["current thinking"],
+        )),
+        gated_chunk(
+            gate_current_done_rx,
+            vec![
+                ev_reasoning_item("current-reasoning", &["current thinking"], &[]),
+                ev_function_call(
+                    "current-call",
+                    "shell",
+                    r#"{"command":"echo current tool call"}"#,
+                ),
+                ev_message_item_added("msg-current", ""),
+                ev_output_text_delta("current answer"),
+                ev_message_item_done("msg-current", "current answer"),
+                ev_completed("resp-current"),
+            ],
+        ),
+    ];
+
+    let (server, _completions) = start_streaming_sse_server(vec![
+        stale_chunks,
+        stale_followup_chunks,
+        active_chunks,
+        response_completed_chunks("resp-steered"),
+    ])
+    .await;
+
+    let codex = build_codex(&server).await;
+
+    submit_user_input(&codex, "stale prompt").await;
+    wait_for_agent_message(&codex, "stale answer").await;
+    wait_for_turn_complete(&codex).await;
+
+    submit_user_input(&codex, "current prompt").await;
+    wait_for_reasoning_item_started(&codex).await;
+    steer_user_input(&codex, "tiny live steer").await;
+    let _ = gate_current_done_tx.send(());
+
+    wait_for_agent_message(&codex, "current answer").await;
+    wait_for_turn_complete(&codex).await;
+
+    let requests = server.requests().await;
+    assert_eq!(requests.len(), 4);
+
+    let steered_body: Value =
+        from_slice(&requests[3]).unwrap_or_else(|err| panic!("parse steered request: {err}"));
+
+    let steered_user_texts = message_input_texts(&steered_body, "user");
+    assert!(
+        steered_user_texts
+            .iter()
+            .any(|text| text == "current prompt"),
+        "active turn prompt should remain visible"
+    );
+    assert!(
+        steered_user_texts
+            .iter()
+            .any(|text| text == "tiny live steer"),
+        "live steer should remain visible"
+    );
+
+    assert!(
+        !input_has_reasoning_summary(&steered_body, "old thinking"),
+        "stale previous-turn reasoning should be pruned"
+    );
+    assert!(
+        !input_has_function_call(&steered_body, "old-call"),
+        "stale previous-turn tool call should be pruned"
+    );
+    assert!(
+        !input_has_function_call_output(&steered_body, "old-call"),
+        "stale previous-turn tool output should be pruned"
+    );
+    assert!(
+        input_has_reasoning_summary(&steered_body, "current thinking"),
+        "current-turn reasoning should be preserved"
+    );
+    assert!(
+        input_has_function_call(&steered_body, "current-call"),
+        "current-turn tool call should be preserved"
+    );
+    assert!(
+        input_has_function_call_output(&steered_body, "current-call"),
+        "current-turn tool output should be preserved"
+    );
+
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn trigger_turn_agent_mail_prunes_stale_history_on_synthetic_turn() {
+    let stale_chunks = vec![
+        chunk(ev_response_created("resp-stale")),
+        chunk(ev_reasoning_item("old-reasoning", &["old thinking"], &[])),
+        chunk(ev_function_call(
+            "old-call",
+            "shell",
+            r#"{"command":"echo stale tool call"}"#,
+        )),
+        chunk(ev_completed("resp-stale")),
+    ];
+
+    let stale_followup_chunks = vec![
+        chunk(ev_response_created("resp-stale-followup")),
+        chunk(ev_message_item_added("msg-stale", "")),
+        chunk(ev_output_text_delta("stale answer")),
+        chunk(ev_message_item_done("msg-stale", "stale answer")),
+        chunk(ev_completed("resp-stale-followup")),
+    ];
+
+    let mail_chunks = vec![
+        chunk(ev_response_created("resp-mail")),
+        chunk(ev_reasoning_item("mail-reasoning", &["mail thinking"], &[])),
+        chunk(ev_function_call(
+            "mail-call",
+            "shell",
+            r#"{"command":"echo mail tool call"}"#,
+        )),
+        chunk(ev_completed("resp-mail")),
+    ];
+
+    let mail_followup_chunks = vec![
+        chunk(ev_response_created("resp-mail-followup")),
+        chunk(ev_message_item_added("msg-mail", "")),
+        chunk(ev_output_text_delta("mail answer")),
+        chunk(ev_message_item_done("msg-mail", "mail answer")),
+        chunk(ev_completed("resp-mail-followup")),
+    ];
+
+    let (server, _completions) = start_streaming_sse_server(vec![
+        stale_chunks,
+        stale_followup_chunks,
+        mail_chunks,
+        mail_followup_chunks,
+    ])
+    .await;
+
+    let codex = build_codex(&server).await;
+
+    submit_user_input(&codex, "stale prompt").await;
+    wait_for_agent_message(&codex, "stale answer").await;
+    wait_for_turn_complete(&codex).await;
+
+    submit_trigger_turn_agent_mail(&codex, "queued child update").await;
+    wait_for_agent_message(&codex, "mail answer").await;
+    wait_for_turn_complete(&codex).await;
+
+    let requests = server.requests().await;
+    assert_eq!(requests.len(), 4);
+
+    let mail_body: Value =
+        from_slice(&requests[2]).unwrap_or_else(|err| panic!("parse mail request: {err}"));
+    let mail_followup_body: Value = from_slice(&requests[3])
+        .unwrap_or_else(|err| panic!("parse mail follow-up request: {err}"));
+
+    for (body, label) in [
+        (&mail_body, "mail request"),
+        (&mail_followup_body, "mail follow-up request"),
+    ] {
+        assert!(
+            !input_has_reasoning_summary(body, "old thinking"),
+            "stale previous-turn reasoning should be pruned from {label}"
+        );
+        assert!(
+            !input_has_function_call(body, "old-call"),
+            "stale previous-turn tool call should be pruned from {label}"
+        );
+        assert!(
+            !input_has_function_call_output(body, "old-call"),
+            "stale previous-turn tool output should be pruned from {label}"
+        );
+        assert!(
+            message_output_texts(body, "assistant")
+                .iter()
+                .any(|text| text.contains("queued child update")),
+            "trigger-turn agent mail should remain visible in {label}"
+        );
+    }
+
+    assert!(
+        input_has_reasoning_summary(&mail_followup_body, "mail thinking"),
+        "synthetic turn reasoning should remain visible in follow-up"
+    );
+    assert!(
+        input_has_function_call(&mail_followup_body, "mail-call"),
+        "synthetic turn tool call should remain visible in follow-up"
+    );
+    assert!(
+        input_has_function_call_output(&mail_followup_body, "mail-call"),
+        "synthetic turn tool output should remain visible in follow-up"
     );
 
     server.shutdown().await;

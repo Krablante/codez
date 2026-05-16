@@ -1,4 +1,6 @@
 use super::prune_prompt_history_for_sampling;
+use super::prune_prompt_history_preserving_current_turn_for_sampling;
+use super::prune_prompt_history_preserving_current_turn_for_sampling_with_boundary;
 use codex_protocol::AgentPath;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
@@ -32,6 +34,13 @@ fn user_message(text: &str) -> ResponseItem {
         content: vec![input_text(text)],
         phase: None,
     }
+}
+
+fn with_message_id(mut item: ResponseItem, message_id: &str) -> ResponseItem {
+    if let ResponseItem::Message { id, .. } = &mut item {
+        *id = Some(message_id.to_string());
+    }
+    item
 }
 
 fn assistant_message(text: &str) -> ResponseItem {
@@ -74,6 +83,34 @@ fn inter_agent_assistant_message(text: &str) -> ResponseItem {
         role: "assistant".to_string(),
         content: vec![output_text(&serde_json::to_string(&communication).unwrap())],
         phase: None,
+    }
+}
+
+fn shell_function_call(call_id: &str, command: &str) -> ResponseItem {
+    ResponseItem::FunctionCall {
+        id: None,
+        name: "shell_command".to_string(),
+        namespace: None,
+        arguments: format!("{{\"command\":\"{command}\"}}"),
+        call_id: call_id.to_string(),
+    }
+}
+
+fn function_call_output(call_id: &str, output: &str) -> ResponseItem {
+    ResponseItem::FunctionCallOutput {
+        call_id: call_id.to_string(),
+        output: FunctionCallOutputPayload::from_text(output.to_string()),
+    }
+}
+
+fn reasoning_item(id: &str, text: &str) -> ResponseItem {
+    ResponseItem::Reasoning {
+        id: id.to_string(),
+        summary: vec![ReasoningItemReasoningSummary::SummaryText {
+            text: text.to_string(),
+        }],
+        content: None,
+        encrypted_content: None,
     }
 }
 
@@ -382,4 +419,424 @@ fn prune_prompt_history_keeps_image_bearing_tool_outputs_from_older_turns() {
         &pruned[4],
         ResponseItem::CustomToolCallOutput { call_id, .. } if call_id == "js-repl-call"
     ));
+}
+
+#[test]
+fn prune_prompt_history_preserving_current_turn_drops_stale_history_before_live_steer() {
+    let stale_context = developer_message("<permissions instructions>\nstale");
+    let stale_env = user_message("<environment_context>\nstale\n</environment_context>");
+    let first_prompt = user_message("first prompt");
+    let first_call = shell_function_call("old-call", "printf old");
+    let first_output = function_call_output("old-call", "old tool output");
+    let first_reasoning = reasoning_item("old-reasoning", "old reasoning");
+    let active_context = developer_message("<permissions instructions>\ncurrent");
+    let active_env = user_message("<environment_context>\ncurrent\n</environment_context>");
+    let active_prompt = user_message("current prompt");
+    let active_call = shell_function_call("current-call", "printf current");
+    let active_output = function_call_output("current-call", "current tool output");
+    let active_reasoning = reasoning_item("current-reasoning", "current reasoning");
+    let live_steer = user_message("also center the title");
+
+    let pruned = prune_prompt_history_preserving_current_turn_for_sampling(vec![
+        stale_context,
+        stale_env,
+        first_prompt.clone(),
+        first_call,
+        first_output,
+        first_reasoning,
+        assistant_message("first answer"),
+        active_context.clone(),
+        active_env.clone(),
+        active_prompt.clone(),
+        active_call.clone(),
+        active_output.clone(),
+        active_reasoning.clone(),
+        live_steer.clone(),
+    ]);
+
+    assert!(!pruned.iter().any(
+        |item| matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "old-call")
+    ));
+    assert!(
+        !pruned
+            .iter()
+            .any(|item| matches!(item, ResponseItem::FunctionCallOutput { call_id, .. } if call_id == "old-call"))
+    );
+    assert!(
+        !pruned.iter().any(
+            |item| matches!(item, ResponseItem::Reasoning { id, .. } if id == "old-reasoning")
+        )
+    );
+    assert!(!pruned.contains(&developer_message("<permissions instructions>\nstale")));
+    assert!(!pruned.contains(&user_message(
+        "<environment_context>\nstale\n</environment_context>"
+    )));
+
+    assert!(pruned.contains(&first_prompt));
+    assert!(pruned.contains(&active_context));
+    assert!(pruned.contains(&active_env));
+    assert!(pruned.contains(&active_prompt));
+    assert!(pruned.contains(&active_call));
+    assert!(pruned.contains(&active_output));
+    assert!(pruned.contains(&active_reasoning));
+    assert!(pruned.contains(&live_steer));
+}
+
+#[test]
+fn prune_prompt_history_preserving_current_turn_keeps_active_chain_with_steer_and_subagent() {
+    let stale_context = developer_message("<permissions instructions>\nstale");
+    let stale_env = user_message("<environment_context>\nstale\n</environment_context>");
+    let first_prompt = user_message("first prompt");
+    let first_call = shell_function_call("old-call", "printf old");
+    let first_output = function_call_output("old-call", "old tool output");
+    let first_reasoning = reasoning_item("old-reasoning", "old reasoning");
+    let active_context = developer_message("<permissions instructions>\ncurrent");
+    let active_env = user_message("<environment_context>\ncurrent\n</environment_context>");
+    let active_prompt = user_message("current prompt");
+    let active_call = shell_function_call("current-call", "printf current");
+    let active_output = function_call_output("current-call", "current tool output");
+    let active_reasoning = reasoning_item("current-reasoning", "current reasoning");
+    let live_steer = user_message("also center the title");
+    let subagent_mail = inter_agent_assistant_message("queued child update");
+
+    let pruned = prune_prompt_history_preserving_current_turn_for_sampling(vec![
+        stale_context,
+        stale_env,
+        first_prompt.clone(),
+        first_call,
+        first_output,
+        first_reasoning,
+        assistant_message("first answer"),
+        active_context.clone(),
+        active_env.clone(),
+        active_prompt.clone(),
+        active_call.clone(),
+        active_output.clone(),
+        active_reasoning.clone(),
+        live_steer.clone(),
+        subagent_mail.clone(),
+    ]);
+
+    assert!(!pruned.iter().any(
+        |item| matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "old-call")
+    ));
+    assert!(
+        !pruned
+            .iter()
+            .any(|item| matches!(item, ResponseItem::FunctionCallOutput { call_id, .. } if call_id == "old-call"))
+    );
+    assert!(
+        !pruned.iter().any(
+            |item| matches!(item, ResponseItem::Reasoning { id, .. } if id == "old-reasoning")
+        )
+    );
+    assert!(!pruned.contains(&developer_message("<permissions instructions>\nstale")));
+    assert!(!pruned.contains(&user_message(
+        "<environment_context>\nstale\n</environment_context>"
+    )));
+
+    assert!(pruned.contains(&first_prompt));
+    assert!(pruned.contains(&active_context));
+    assert!(pruned.contains(&active_env));
+    assert!(pruned.contains(&active_prompt));
+    assert!(pruned.contains(&active_call));
+    assert!(pruned.contains(&active_output));
+    assert!(pruned.contains(&active_reasoning));
+    assert!(pruned.contains(&live_steer));
+    assert!(pruned.contains(&subagent_mail));
+}
+
+#[test]
+fn prune_prompt_history_preserving_current_turn_keeps_chain_before_repeated_live_steer() {
+    let stale_context = developer_message("<permissions instructions>\nstale");
+    let stale_env = user_message("<environment_context>\nstale\n</environment_context>");
+    let first_prompt = user_message("first prompt");
+    let first_call = shell_function_call("old-call", "printf old");
+    let first_output = function_call_output("old-call", "old tool output");
+    let first_reasoning = reasoning_item("old-reasoning", "old reasoning");
+    let active_context = developer_message("<permissions instructions>\ncurrent");
+    let active_env = user_message("<environment_context>\ncurrent\n</environment_context>");
+    let active_prompt = user_message("current prompt");
+    let active_call = shell_function_call("current-call", "printf current");
+    let active_output = function_call_output("current-call", "current tool output");
+    let active_reasoning = reasoning_item("current-reasoning", "current reasoning");
+    let first_live_steer = user_message("also center the title");
+    let post_steer_call = shell_function_call("post-steer-call", "printf post-steer");
+    let post_steer_output = function_call_output("post-steer-call", "post-steer tool output");
+    let post_steer_reasoning = reasoning_item("post-steer-reasoning", "post-steer reasoning");
+    let second_live_steer = user_message("make it tighter too");
+
+    let pruned = prune_prompt_history_preserving_current_turn_for_sampling(vec![
+        stale_context,
+        stale_env,
+        first_prompt.clone(),
+        first_call,
+        first_output,
+        first_reasoning,
+        assistant_message("first answer"),
+        active_context.clone(),
+        active_env.clone(),
+        active_prompt.clone(),
+        active_call.clone(),
+        active_output.clone(),
+        active_reasoning.clone(),
+        first_live_steer.clone(),
+        post_steer_call.clone(),
+        post_steer_output.clone(),
+        post_steer_reasoning.clone(),
+        second_live_steer.clone(),
+    ]);
+
+    assert!(!pruned.iter().any(
+        |item| matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "old-call")
+    ));
+    assert!(
+        !pruned
+            .iter()
+            .any(|item| matches!(item, ResponseItem::FunctionCallOutput { call_id, .. } if call_id == "old-call"))
+    );
+    assert!(
+        !pruned.iter().any(
+            |item| matches!(item, ResponseItem::Reasoning { id, .. } if id == "old-reasoning")
+        )
+    );
+    assert!(!pruned.contains(&developer_message("<permissions instructions>\nstale")));
+    assert!(!pruned.contains(&user_message(
+        "<environment_context>\nstale\n</environment_context>"
+    )));
+
+    assert!(pruned.contains(&first_prompt));
+    assert!(pruned.contains(&active_context));
+    assert!(pruned.contains(&active_env));
+    assert!(pruned.contains(&active_prompt));
+    assert!(pruned.contains(&active_call));
+    assert!(pruned.contains(&active_output));
+    assert!(pruned.contains(&active_reasoning));
+    assert!(pruned.contains(&first_live_steer));
+    assert!(pruned.contains(&post_steer_call));
+    assert!(pruned.contains(&post_steer_output));
+    assert!(pruned.contains(&post_steer_reasoning));
+    assert!(pruned.contains(&second_live_steer));
+}
+
+#[test]
+fn prune_prompt_history_preserving_current_turn_uses_marker_for_repeated_text_collision() {
+    let stale_context = developer_message("<permissions instructions>\nstale");
+    let first_prompt = user_message("first prompt");
+    let first_call = shell_function_call("old-call", "printf old");
+    let first_output = function_call_output("old-call", "old tool output");
+    let first_reasoning = reasoning_item("old-reasoning", "old reasoning");
+    let active_prompt = with_message_id(user_message("repeat this exact text"), "active-boundary");
+    let active_call = shell_function_call("current-call", "printf current");
+    let active_output = function_call_output("current-call", "current tool output");
+    let active_reasoning = reasoning_item("current-reasoning", "current reasoning");
+    let duplicate_text_live_steer = with_message_id(
+        user_message("repeat this exact text"),
+        "live-steer-boundary",
+    );
+
+    let pruned = prune_prompt_history_preserving_current_turn_for_sampling_with_boundary(
+        vec![
+            stale_context,
+            first_prompt,
+            first_call,
+            first_output,
+            first_reasoning,
+            assistant_message("first answer"),
+            active_prompt.clone(),
+            active_call.clone(),
+            active_output.clone(),
+            active_reasoning.clone(),
+            duplicate_text_live_steer.clone(),
+        ],
+        active_prompt.clone(),
+    );
+
+    assert!(!pruned.iter().any(
+        |item| matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "old-call")
+    ));
+    assert!(
+        !pruned.iter().any(
+            |item| matches!(item, ResponseItem::Reasoning { id, .. } if id == "old-reasoning")
+        )
+    );
+
+    assert!(pruned.contains(&active_prompt));
+    assert!(pruned.contains(&active_call));
+    assert!(pruned.contains(&active_output));
+    assert!(pruned.contains(&active_reasoning));
+    assert!(pruned.contains(&duplicate_text_live_steer));
+}
+
+#[test]
+fn prune_prompt_history_preserving_current_turn_uses_adjacent_marked_boundary() {
+    let stale_context = developer_message("<permissions instructions>\nstale");
+    let first_prompt = user_message("first prompt");
+    let first_call = shell_function_call("old-call", "printf old");
+    let first_output = function_call_output("old-call", "old tool output");
+    let first_reasoning = reasoning_item("old-reasoning", "old reasoning");
+    let active_prompt = with_message_id(user_message("current prompt"), "active-boundary");
+    let live_steer = with_message_id(user_message("also center the title"), "live-steer-boundary");
+
+    let pruned = prune_prompt_history_preserving_current_turn_for_sampling_with_boundary(
+        vec![
+            stale_context,
+            first_prompt,
+            first_call,
+            first_output,
+            first_reasoning,
+            assistant_message("first answer"),
+            active_prompt.clone(),
+            live_steer.clone(),
+        ],
+        active_prompt.clone(),
+    );
+
+    assert!(!pruned.iter().any(
+        |item| matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "old-call")
+    ));
+    assert!(
+        !pruned
+            .iter()
+            .any(|item| matches!(item, ResponseItem::FunctionCallOutput { call_id, .. } if call_id == "old-call"))
+    );
+    assert!(
+        !pruned.iter().any(
+            |item| matches!(item, ResponseItem::Reasoning { id, .. } if id == "old-reasoning")
+        )
+    );
+    assert!(!pruned.contains(&developer_message("<permissions instructions>\nstale")));
+
+    assert!(pruned.contains(&active_prompt));
+    assert!(pruned.contains(&live_steer));
+}
+
+#[test]
+fn prune_prompt_history_preserving_current_turn_keeps_chain_before_interleaved_context() {
+    let stale_context = developer_message("<permissions instructions>\nstale");
+    let stale_env = user_message("<environment_context>\nstale\n</environment_context>");
+    let first_prompt = user_message("first prompt");
+    let first_call = shell_function_call("old-call", "printf old");
+    let first_output = function_call_output("old-call", "old tool output");
+    let first_reasoning = reasoning_item("old-reasoning", "old reasoning");
+    let active_context = developer_message("<permissions instructions>\ncurrent");
+    let active_env = user_message("<environment_context>\ncurrent\n</environment_context>");
+    let active_prompt = user_message("current prompt");
+    let active_call = shell_function_call("current-call", "printf current");
+    let active_output = function_call_output("current-call", "current tool output");
+    let active_reasoning = reasoning_item("current-reasoning", "current reasoning");
+    let live_steer = user_message("also center the title");
+    let hook_context = developer_message("hook additional context");
+    let subagent_mail = inter_agent_assistant_message("queued child update");
+
+    let pruned = prune_prompt_history_preserving_current_turn_for_sampling(vec![
+        stale_context,
+        stale_env,
+        first_prompt.clone(),
+        first_call,
+        first_output,
+        first_reasoning,
+        assistant_message("first answer"),
+        active_context.clone(),
+        active_env.clone(),
+        active_prompt.clone(),
+        active_call.clone(),
+        active_output.clone(),
+        active_reasoning.clone(),
+        live_steer.clone(),
+        hook_context.clone(),
+        subagent_mail.clone(),
+    ]);
+
+    assert!(!pruned.iter().any(
+        |item| matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "old-call")
+    ));
+    assert!(
+        !pruned
+            .iter()
+            .any(|item| matches!(item, ResponseItem::FunctionCallOutput { call_id, .. } if call_id == "old-call"))
+    );
+    assert!(
+        !pruned.iter().any(
+            |item| matches!(item, ResponseItem::Reasoning { id, .. } if id == "old-reasoning")
+        )
+    );
+    assert!(!pruned.contains(&developer_message("<permissions instructions>\nstale")));
+    assert!(!pruned.contains(&user_message(
+        "<environment_context>\nstale\n</environment_context>"
+    )));
+
+    assert!(pruned.contains(&first_prompt));
+    assert!(pruned.contains(&active_context));
+    assert!(pruned.contains(&active_env));
+    assert!(pruned.contains(&active_prompt));
+    assert!(pruned.contains(&active_call));
+    assert!(pruned.contains(&active_output));
+    assert!(pruned.contains(&active_reasoning));
+    assert!(pruned.contains(&live_steer));
+    assert!(pruned.contains(&hook_context));
+    assert!(pruned.contains(&subagent_mail));
+}
+
+#[test]
+fn prune_prompt_history_preserving_current_turn_uses_synthetic_boundary_without_context() {
+    let stale_context = developer_message("<permissions instructions>\nstale");
+    let stale_env = user_message("<environment_context>\nstale\n</environment_context>");
+    let first_prompt = user_message("first prompt");
+    let first_call = shell_function_call("old-call", "printf old");
+    let first_output = function_call_output("old-call", "old tool output");
+    let first_reasoning = reasoning_item("old-reasoning", "old reasoning");
+    let goal_prompt = with_message_id(
+        developer_message(
+            "Continue working toward the active thread goal.\n\n<untrusted_objective>\nwrite a benchmark note\n</untrusted_objective>",
+        ),
+        "goal-boundary",
+    );
+    let goal_call = shell_function_call("goal-call", "printf goal");
+    let goal_output = function_call_output("goal-call", "goal tool output");
+    let goal_reasoning = reasoning_item("goal-reasoning", "goal reasoning");
+    let live_steer = user_message("also include the graph");
+
+    let pruned = prune_prompt_history_preserving_current_turn_for_sampling_with_boundary(
+        vec![
+            stale_context,
+            stale_env,
+            first_prompt.clone(),
+            first_call,
+            first_output,
+            first_reasoning,
+            assistant_message("first answer"),
+            goal_prompt.clone(),
+            goal_call.clone(),
+            goal_output.clone(),
+            goal_reasoning.clone(),
+            live_steer.clone(),
+        ],
+        goal_prompt.clone(),
+    );
+
+    assert!(!pruned.iter().any(
+        |item| matches!(item, ResponseItem::FunctionCall { call_id, .. } if call_id == "old-call")
+    ));
+    assert!(
+        !pruned
+            .iter()
+            .any(|item| matches!(item, ResponseItem::FunctionCallOutput { call_id, .. } if call_id == "old-call"))
+    );
+    assert!(
+        !pruned.iter().any(
+            |item| matches!(item, ResponseItem::Reasoning { id, .. } if id == "old-reasoning")
+        )
+    );
+    assert!(!pruned.contains(&developer_message("<permissions instructions>\nstale")));
+    assert!(!pruned.contains(&user_message(
+        "<environment_context>\nstale\n</environment_context>"
+    )));
+
+    assert!(pruned.contains(&first_prompt));
+    assert!(pruned.contains(&goal_prompt));
+    assert!(pruned.contains(&goal_call));
+    assert!(pruned.contains(&goal_output));
+    assert!(pruned.contains(&goal_reasoning));
+    assert!(pruned.contains(&live_steer));
 }

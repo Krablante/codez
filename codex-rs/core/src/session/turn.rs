@@ -25,6 +25,7 @@ use crate::event_mapping::is_contextual_dev_message_content;
 use crate::event_mapping::is_contextual_user_message_content;
 use crate::feedback_tags;
 use crate::hook_runtime::PendingInputHookDisposition;
+use crate::hook_runtime::PendingInputRecord;
 use crate::hook_runtime::emit_hook_completed_events;
 use crate::hook_runtime::inspect_pending_input;
 use crate::hook_runtime::record_additional_contexts;
@@ -311,11 +312,18 @@ pub(crate) async fn run_turn(
     if run_pending_session_start_hooks(&sess, &turn_context).await {
         return None;
     }
+    let mut next_prompt_boundary_marker_index = 0usize;
+    let mut current_turn_boundary_marker = None;
     let additional_contexts = if input.is_empty() {
         Vec::new()
     } else {
         let initial_input_for_turn: ResponseInputItem = ResponseInputItem::from(input.clone());
-        let response_item: ResponseItem = initial_input_for_turn.clone().into();
+        let mut response_item: ResponseItem = initial_input_for_turn.clone().into();
+        current_turn_boundary_marker = assign_prompt_pruning_turn_boundary_marker(
+            &mut response_item,
+            &turn_context.sub_id,
+            &mut next_prompt_boundary_marker_index,
+        );
         let user_prompt_submit_outcome = run_user_prompt_submit_hooks(
             &sess,
             &turn_context,
@@ -390,7 +398,11 @@ pub(crate) async fn run_turn(
         .is_thread_goal_continuation_turn(&turn_context.sub_id)
         .await;
     let mut can_drain_pending_input = input.is_empty();
-    let mut allow_prompt_history_pruning = !input.is_empty() || is_thread_goal_continuation_turn;
+    let mut prompt_history_pruning_mode = if !input.is_empty() || is_thread_goal_continuation_turn {
+        PromptHistoryPruningMode::LatestTurn
+    } else {
+        PromptHistoryPruningMode::Disabled
+    };
     let mut sampling_request_started = false;
 
     loop {
@@ -435,13 +447,43 @@ pub(crate) async fn run_turn(
         }
 
         let has_accepted_pending_input = !accepted_pending_input.is_empty();
+        for pending_input in &mut accepted_pending_input {
+            let response_item = pending_input_response_item_mut(pending_input);
+            let marker = assign_prompt_pruning_turn_boundary_marker(
+                response_item,
+                &turn_context.sub_id,
+                &mut next_prompt_boundary_marker_index,
+            );
+            if current_turn_boundary_marker.is_none() {
+                current_turn_boundary_marker = marker;
+            }
+        }
+        if has_accepted_pending_input
+            && !sampling_request_started
+            && current_turn_boundary_marker.is_none()
+        {
+            current_turn_boundary_marker =
+                accepted_pending_input.iter().find_map(|pending_input| {
+                    let response_item = match pending_input {
+                        PendingInputRecord::UserMessage { response_item, .. }
+                        | PendingInputRecord::ConversationItem { response_item } => response_item,
+                    };
+                    prompt_pruning_turn_boundary_marker(response_item).map(str::to_string)
+                });
+        }
         if has_accepted_pending_input
             && (!is_thread_goal_continuation_turn || sampling_request_started)
         {
             // Same-turn/live steering appends user input inside an active run.
-            // Do not prune around that new boundary; the model still needs the
-            // tool/reasoning chain that produced the current in-flight state.
-            allow_prompt_history_pruning = false;
+            // Keep the tool/reasoning chain that produced the current in-flight
+            // state, but still drop stale history before that active turn.
+            prompt_history_pruning_mode = if sampling_request_started {
+                PromptHistoryPruningMode::PreserveCurrentTurn {
+                    initial_turn_boundary_marker: current_turn_boundary_marker.clone(),
+                }
+            } else {
+                PromptHistoryPruningMode::LatestTurn
+            };
         }
         for pending_input in accepted_pending_input {
             record_pending_input(&sess, &turn_context, pending_input).await;
@@ -480,7 +522,7 @@ pub(crate) async fn run_turn(
             sampling_request_input,
             &explicitly_enabled_connectors,
             skills_outcome,
-            allow_prompt_history_pruning,
+            prompt_history_pruning_mode.clone(),
             cancellation_token.child_token(),
         )
         .await
@@ -1020,10 +1062,80 @@ pub(crate) fn prune_prompt_history_for_sampling(items: Vec<ResponseItem>) -> Vec
         return items;
     };
 
-    let mut active_turn_start = last_turn_boundary;
-    while active_turn_start > 0 && is_active_turn_context_item(&items[active_turn_start - 1]) {
-        active_turn_start -= 1;
+    prune_prompt_history_for_sampling_from_boundary(items, last_turn_boundary)
+}
+
+#[cfg(test)]
+pub(crate) fn prune_prompt_history_preserving_current_turn_for_sampling(
+    items: Vec<ResponseItem>,
+) -> Vec<ResponseItem> {
+    prune_prompt_history_preserving_current_turn_with_boundary(items, None)
+}
+
+#[cfg(test)]
+pub(crate) fn prune_prompt_history_preserving_current_turn_for_sampling_with_boundary(
+    items: Vec<ResponseItem>,
+    initial_turn_boundary: ResponseItem,
+) -> Vec<ResponseItem> {
+    prune_prompt_history_preserving_current_turn_with_boundary(
+        items,
+        prompt_pruning_turn_boundary_marker(&initial_turn_boundary),
+    )
+}
+
+fn prune_prompt_history_preserving_current_turn_with_boundary(
+    items: Vec<ResponseItem>,
+    initial_turn_boundary_marker: Option<&str>,
+) -> Vec<ResponseItem> {
+    let Some(mut pending_input_boundary) = items.iter().rposition(is_prompt_pruning_turn_boundary)
+    else {
+        return items;
+    };
+    // A live steer and current-turn mailbox update can arrive together. Treat
+    // the whole trailing run of pending-input boundaries as one pending cluster.
+    while pending_input_boundary > 0
+        && is_prompt_pruning_turn_boundary(&items[pending_input_boundary - 1])
+    {
+        pending_input_boundary -= 1;
     }
+
+    if let Some(initial_turn_boundary_marker) = initial_turn_boundary_marker
+        && let Some(current_turn_boundary) =
+            items[..=pending_input_boundary].iter().rposition(|item| {
+                prompt_pruning_turn_boundary_marker(item) == Some(initial_turn_boundary_marker)
+                    && is_prompt_pruning_turn_boundary(item)
+            })
+    {
+        return prune_prompt_history_for_sampling_from_boundary(items, current_turn_boundary);
+    }
+
+    let Some(mut current_turn_boundary) = items[..pending_input_boundary]
+        .iter()
+        .rposition(is_prompt_pruning_turn_boundary)
+    else {
+        return items;
+    };
+    let pending_run_boundary = current_turn_boundary;
+
+    while context_start_for_turn_boundary(&items, current_turn_boundary) == current_turn_boundary {
+        let Some(previous_boundary) = items[..current_turn_boundary]
+            .iter()
+            .rposition(is_prompt_pruning_turn_boundary)
+        else {
+            current_turn_boundary = pending_run_boundary;
+            break;
+        };
+        current_turn_boundary = previous_boundary;
+    }
+
+    prune_prompt_history_for_sampling_from_boundary(items, current_turn_boundary)
+}
+
+fn prune_prompt_history_for_sampling_from_boundary(
+    items: Vec<ResponseItem>,
+    turn_boundary: usize,
+) -> Vec<ResponseItem> {
+    let active_turn_start = context_start_for_turn_boundary(&items, turn_boundary);
     let preserved_image_call_ids = items
         .iter()
         .take(active_turn_start)
@@ -1047,6 +1159,70 @@ pub(crate) fn prune_prompt_history_for_sampling(items: Vec<ResponseItem>) -> Vec
             }
         })
         .collect()
+}
+
+fn context_start_for_turn_boundary(items: &[ResponseItem], turn_boundary: usize) -> usize {
+    let mut active_turn_start = turn_boundary;
+    while active_turn_start > 0 && is_active_turn_context_item(&items[active_turn_start - 1]) {
+        active_turn_start -= 1;
+    }
+    active_turn_start
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum PromptHistoryPruningMode {
+    Disabled,
+    LatestTurn,
+    PreserveCurrentTurn {
+        initial_turn_boundary_marker: Option<String>,
+    },
+}
+
+impl PromptHistoryPruningMode {
+    fn prune(&self, input: Vec<ResponseItem>) -> Vec<ResponseItem> {
+        match self {
+            PromptHistoryPruningMode::Disabled => input,
+            PromptHistoryPruningMode::LatestTurn => prune_prompt_history_for_sampling(input),
+            PromptHistoryPruningMode::PreserveCurrentTurn {
+                initial_turn_boundary_marker,
+            } => prune_prompt_history_preserving_current_turn_with_boundary(
+                input,
+                initial_turn_boundary_marker.as_deref(),
+            ),
+        }
+    }
+}
+
+fn pending_input_response_item_mut(pending_input: &mut PendingInputRecord) -> &mut ResponseItem {
+    match pending_input {
+        PendingInputRecord::UserMessage { response_item, .. }
+        | PendingInputRecord::ConversationItem { response_item } => response_item,
+    }
+}
+
+fn assign_prompt_pruning_turn_boundary_marker(
+    item: &mut ResponseItem,
+    turn_id: &impl std::fmt::Display,
+    next_index: &mut usize,
+) -> Option<String> {
+    if !is_prompt_pruning_turn_boundary(item) {
+        return None;
+    }
+    let ResponseItem::Message { id, .. } = item else {
+        return None;
+    };
+
+    let marker = format!("prompt-boundary:{turn_id}:{}", *next_index);
+    *next_index += 1;
+    *id = Some(marker.clone());
+    Some(marker)
+}
+
+fn prompt_pruning_turn_boundary_marker(item: &ResponseItem) -> Option<&str> {
+    let ResponseItem::Message { id, .. } = item else {
+        return None;
+    };
+    id.as_deref()
 }
 
 fn is_prompt_pruning_turn_boundary(item: &ResponseItem) -> bool {
@@ -1162,7 +1338,7 @@ async fn run_sampling_request(
     input: Vec<ResponseItem>,
     explicitly_enabled_connectors: &HashSet<String>,
     skills_outcome: Option<&SkillLoadOutcome>,
-    allow_prompt_history_pruning: bool,
+    prompt_history_pruning_mode: PromptHistoryPruningMode,
     cancellation_token: CancellationToken,
 ) -> CodexResult<SamplingRequestResult> {
     let router = built_tools(
@@ -1203,11 +1379,7 @@ async fn run_sampling_request(
                 .await
                 .for_prompt(&turn_context.model_info.input_modalities)
         };
-        let prompt_input = if allow_prompt_history_pruning {
-            prune_prompt_history_for_sampling(prompt_input)
-        } else {
-            prompt_input
-        };
+        let prompt_input = prompt_history_pruning_mode.prune(prompt_input);
         let prompt = build_prompt(
             prompt_input,
             router.as_ref(),

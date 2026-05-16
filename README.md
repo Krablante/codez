@@ -57,6 +57,9 @@ runtime work aimed at long local-agent sessions:
 - goal-continuation pruning: automatic goal follow-up turns are treated as
   fresh prompt boundaries, so previous tool-heavy work can be trimmed while the
   active goal objective remains visible
+- live-steer prompt boundary safety: tiny steering updates during a run can
+  stay adjacent to the active turn without disabling broader stale-history
+  pruning for later requests
 - compaction-aware pruning: the remote/autocompact path can apply the same
   pruning and trim function-call history before compaction, reducing context
   pressure before a summarization turn
