@@ -3,21 +3,21 @@
 Codez is intentionally close to upstream Codex where compatibility matters.
 Fork-specific behavior should be explicit and optional where possible.
 
-| Surface | Upstream Codex | Codez | Notes |
-| --- | --- | --- | --- |
-| CLI command | `codex` | `codex` | Kept compatible so scripts and habits transfer. |
-| NPM package shape | `@openai/codex` | publication decision | Public package naming is not finalized in this projection. |
-| License | Apache-2.0 | Apache-2.0 | Keep upstream attribution intact. |
-| Core Rust runtime | upstream baseline | forked runtime | Codez changes should stay bounded and documented. |
-| Prompt-history pruning | upstream behavior | Codez token-control path | Prunes stale context, older reasoning, tool calls, and tool outputs before model sampling when safe. |
-| Goal-continuation pruning | upstream behavior | Codez token-control path | Treats automatic goal follow-up prompts as fresh prompt boundaries while preserving live-steering safety. |
-| Remote/autocompact pruning | upstream behavior | Codez compaction path | Applies pruning before remote compaction and can trim function-call history to reduce context pressure. |
-| App Server v2 | upstream-compatible where present | active fork surface | Local client/gateway protocol surface for thread operations, command events, hook/catalog inspection, and richer integrations. |
-| Plugin loading | upstream-compatible where present | active fork surface | Used for local plugin workflows and hook experiments. |
-| Plugin hooks | optional feature | supported Codez use case | Enable via config when a runtime supports plugin hooks; Codez keeps plugin-loaded hook paths usable for RTK/Pitlane-style workflows. |
-| RTK Codex Plugin | external | optional external plugin | Adds shell rewrite and bounded-output guard behavior. |
-| Pitlane Codex Plugin | external | optional external plugin | Adds indexed code-navigation rewrites through host-local Pitlane CLI. |
-| Gateway layer | not required | not required | Gateway projects can use Codez, but Codez should not depend on them. |
+| Surface                    | Upstream Codex                    | Codez                    | Notes                                                                                                                                |
+| -------------------------- | --------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| CLI command                | `codex`                           | `codex`                  | Kept compatible so scripts and habits transfer.                                                                                      |
+| NPM package shape          | `@openai/codex`                   | publication decision     | Public package naming is not finalized in this projection.                                                                           |
+| License                    | Apache-2.0                        | Apache-2.0               | Keep upstream attribution intact.                                                                                                    |
+| Core Rust runtime          | upstream baseline                 | forked runtime           | Codez changes should stay bounded and documented.                                                                                    |
+| Prompt-history pruning     | upstream behavior                 | Codez token-control path | Prunes stale context, older reasoning, tool calls, and tool outputs before model sampling when safe.                                 |
+| Goal-continuation pruning  | upstream behavior                 | Codez token-control path | Treats automatic goal follow-up prompts as fresh prompt boundaries while preserving live-steering safety.                            |
+| Remote/autocompact pruning | upstream behavior                 | Codez compaction path    | Applies pruning before remote compaction and can trim function-call history to reduce context pressure.                              |
+| App Server v2              | upstream-compatible where present | active fork surface      | Local client/gateway protocol surface for thread operations, command events, hook/catalog inspection, and richer integrations.       |
+| Plugin loading             | upstream-compatible where present | active fork surface      | Used for local plugin workflows and hook experiments.                                                                                |
+| Plugin hooks               | optional feature                  | supported Codez use case | Enable via config when a runtime supports plugin hooks; Codez keeps plugin-loaded hook paths usable for RTK/Pitlane-style workflows. |
+| RTK Codex Plugin           | external                          | optional external plugin | Adds shell rewrite and bounded-output guard behavior.                                                                                |
+| Pitlane Codex Plugin       | external                          | optional external plugin | Adds indexed code-navigation rewrites through host-local Pitlane CLI.                                                                |
+| Gateway layer              | not required                      | not required             | Gateway projects can use Codez, but Codez should not depend on them.                                                                 |
 
 ## Token-Control Shape
 

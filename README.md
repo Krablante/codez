@@ -20,6 +20,8 @@
 <p align="center">
   <a href="./docs/compatibility.md">Compatibility</a>
   ·
+  <a href="./docs/stack.md">Stack</a>
+  ·
   <a href="./docs/rtk-plugin.md">RTK Plugin</a>
   ·
   <a href="./docs/pitlane-plugin.md">Pitlane Plugin</a>
@@ -59,11 +61,23 @@ runtime work aimed at long local-agent sessions:
   pruning and trim function-call history before compaction, reducing context
   pressure before a summarization turn
 - App Server v2: a local app/server protocol surface for richer clients,
-  gateway experiments, thread operations, hook/catalog inspection, and command
-  event flows
+  gateway experiments, thread operations, goal RPC, hook/catalog inspection,
+  and command event flows
 - plugin hook compatibility: Codez keeps plugin-loaded hook paths usable for
   `PreToolUse` workflows, so optional plugins such as RTK and Pitlane can run
   as normal runtime extensions
+
+## Part of the Codez stack
+
+The Codez stack is modular. Each layer can be used on its own unless a higher
+layer explicitly opts into it.
+
+| Layer                                                                     | Public surface                 | Responsibility                                                                    | Dependency                                                                                                                    |
+| ------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| [Codez](https://github.com/Krablante/codez)                               | Codex-compatible runtime       | App Server v2, goal RPC, long-session hardening, prompt pruning, and plugin hooks | Does not require Teledex                                                                                                      |
+| [RTK Codex Plugin](https://github.com/Krablante/rtk-codex-plugin)         | Optional Codex plugin          | Shell/token safety through `rtk rewrite` and bounded output guarding              | Requires a Codex-compatible plugin-hook runtime; does not require Teledex                                                     |
+| [Pitlane Codex Plugin](https://github.com/Krablante/pitlane-codex-plugin) | Optional Codex plugin          | Code-navigation/token-saving rewrites through a host-local `pitlane` CLI          | Requires a Codex-compatible plugin-hook runtime and local `pitlane`; does not require Teledex                                 |
+| Teledex (planned public repo: `Krablante/teledex`)                        | Telegram gateway/session layer | Topics, queues, live steer, `/goal` UX, and multi-host delivery/recovery          | Basic mode can drive upstream Codex; full mode requires a Codez-compatible runtime with App Server v2 and plugin-hook support |
 
 ## What Is Different
 
@@ -71,22 +85,13 @@ Codez keeps upstream names such as `codex`, `@openai/codex`, and Codex protocol
 terms where compatibility matters. Fork-specific docs use the Codez name when
 describing additions, release projections, or stack positioning.
 
-The public stack shape is:
-
-```text
-Codez runtime
-  -> optional RTK Codex Plugin for shell token-safety
-  -> optional Pitlane Codex Plugin for indexed code navigation
-  -> Telegram gateway layer later (Teledex coming next)
-```
-
 RTK and Pitlane are published separately:
 
 https://github.com/Krablante/rtk-codex-plugin
 https://github.com/Krablante/pitlane-codex-plugin
 
 The Telegram gateway layer is not linked here yet because its public repo has
-not been published.
+not been published. The planned public name is `Krablante/teledex`.
 
 ## Quick Start
 
@@ -110,6 +115,7 @@ by OpenAI:
 ## Read Next
 
 - [Compatibility matrix](./docs/compatibility.md)
+- [Codez stack](./docs/stack.md)
 - [Optional RTK plugin integration](./docs/rtk-plugin.md)
 - [Optional Pitlane plugin integration](./docs/pitlane-plugin.md)
 - [Installing and building](./docs/install.md)
