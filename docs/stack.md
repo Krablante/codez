@@ -11,7 +11,7 @@ add the higher layers only when you need their job.
 | [Codez](https://github.com/Krablante/codez)                               | Codex-compatible runtime       | App Server v2, goal RPC, long-session hardening, prompt pruning, and plugin hooks | Does not require Teledex                                                                                                      |
 | [RTK Codex Plugin](https://github.com/Krablante/rtk-codex-plugin)         | Optional Codex plugin          | Shell/token safety through `rtk rewrite` and bounded output guarding              | Requires a Codex-compatible plugin-hook runtime; does not require Teledex                                                     |
 | [Pitlane Codex Plugin](https://github.com/Krablante/pitlane-codex-plugin) | Optional Codex plugin          | Code-navigation/token-saving rewrites through a host-local `pitlane` CLI          | Requires a Codex-compatible plugin-hook runtime and local `pitlane`; does not require Teledex                                 |
-| [Teledex](https://github.com/Krablante/teledex)                           | Telegram gateway/session layer | Topics, queues, live steer, `/goal` UX, and delivery/recovery around durable agent sessions | Full mode is optimized for Codez App Server v2; upstream `codex exec --json` is legacy compatibility only                     |
+| [Teledex](https://github.com/Krablante/teledex)                           | Telegram gateway/session layer | Topics, queues, live steer, `/goal` UX, and delivery/recovery around durable agent sessions | Requires Codez App Server v2 for normal public use; upstream `codex exec --json` is legacy compatibility only                 |
 
 ## Plain Version
 
@@ -21,7 +21,7 @@ CLI calls. Teledex is the Telegram/session gateway that can drive a runtime,
 but it is not part of the Codez runtime itself.
 
 Codez does not depend on Teledex. RTK and Pitlane do not depend on Teledex.
-Teledex full mode is optimized for Codez App Server v2, including `/goal`,
+Teledex requires Codez App Server v2 for normal public use, including `/goal`,
 typed thread RPC, stable gateway events, long-running session control, and
 plugin-aware operation. Upstream `codex exec --json` remains a legacy
 compatibility fallback, not the strategic gateway backend.
