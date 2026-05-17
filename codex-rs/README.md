@@ -9,20 +9,31 @@
 
 We provide Codex CLI as a standalone executable to ensure a zero-dependency install.
 
-## Installing Codex
+## Building Codez from Source
 
-Today, the easiest way to install Codex is via `npm`:
+This public projection is currently source-first for Codez. From the repository
+root:
 
 ```shell
-npm i -g @openai/codex
-codex
+cd codex-rs
+cargo build
+cargo run --bin codex -- --help
 ```
 
-You can also install via Homebrew (`brew install --cask codex`) or download a platform-specific release directly from our [GitHub Releases](https://github.com/openai/codex/releases).
+For gateway integrations such as Teledex full mode, use the App Server v2
+runtime surface:
+
+```shell
+cargo run --bin codex -- app-server --listen stdio://
+```
+
+Upstream install paths such as `npm i -g @openai/codex`, Homebrew, and OpenAI
+GitHub releases are compatibility references for inherited Codex CLI behavior.
+They are not the Codez publication path unless a future Codez release says so.
 
 ## Documentation quickstart
 
-- First run with Codex? Start with [`docs/getting-started.md`](../docs/getting-started.md) (links to the walkthrough for prompts, keyboard shortcuts, and session management).
+- First run with Codez? Start with [`docs/getting-started.md`](../docs/getting-started.md) for the source-build path and App Server v2 entry point.
 - Want deeper control? See [`docs/config.md`](../docs/config.md) and [`docs/install.md`](../docs/install.md).
 
 ## What's new in the Rust CLI
