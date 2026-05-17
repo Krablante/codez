@@ -1,7 +1,11 @@
 # Getting Started with Codez
 
-Codez is a public source projection of a Codex-compatible runtime. Packaged
-Codez releases are still a publication decision, so start from the source tree:
+Codez is a public source projection of a Codex-compatible runtime. For normal
+installs, use the Linux x64 or Windows x64 archives from the
+[Codez releases page](https://github.com/Krablante/codez/releases) and verify
+them against `SHA256SUMS`.
+
+To build from source instead:
 
 ```bash
 git clone https://github.com/Krablante/codez
