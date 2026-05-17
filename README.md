@@ -75,12 +75,12 @@ runtime work aimed at long local-agent sessions:
 The Codez stack is modular. Each layer can be used on its own unless a higher
 layer explicitly opts into it.
 
-| Layer                                                                     | Public surface                 | Responsibility                                                                    | Dependency                                                                                                                    |
-| ------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [Codez](https://github.com/Krablante/codez)                               | Codex-compatible runtime       | App Server v2, goal RPC, long-session hardening, prompt pruning, and plugin hooks | Does not require Teledex                                                                                                      |
-| [RTK Codex Plugin](https://github.com/Krablante/rtk-codex-plugin)         | Optional Codex plugin          | Shell/token safety through `rtk rewrite` and bounded output guarding              | Requires a Codex-compatible plugin-hook runtime; does not require Teledex                                                     |
-| [Pitlane Codex Plugin](https://github.com/Krablante/pitlane-codex-plugin) | Optional Codex plugin          | Code-navigation/token-saving rewrites through a host-local `pitlane` CLI          | Requires a Codex-compatible plugin-hook runtime and local `pitlane`; does not require Teledex                                 |
-| [Teledex](https://github.com/Krablante/teledex)                           | Telegram gateway/session layer | Topics, queues, live steer, `/goal` UX, and delivery/recovery around durable agent sessions | Full mode is optimized for Codez App Server v2; upstream `codex exec --json` is legacy compatibility only                     |
+| Layer                                                                     | Public surface                 | Responsibility                                                                              | Dependency                                                                                                |
+| ------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [Codez](https://github.com/Krablante/codez)                               | Codex-compatible runtime       | App Server v2, goal RPC, long-session hardening, prompt pruning, and plugin hooks           | Does not require Teledex                                                                                  |
+| [RTK Codex Plugin](https://github.com/Krablante/rtk-codex-plugin)         | Optional Codex plugin          | Shell/token safety through `rtk rewrite` and bounded output guarding                        | Requires a Codex-compatible plugin-hook runtime; does not require Teledex                                 |
+| [Pitlane Codex Plugin](https://github.com/Krablante/pitlane-codex-plugin) | Optional Codex plugin          | Code-navigation/token-saving rewrites through a host-local `pitlane` CLI                    | Requires a Codex-compatible plugin-hook runtime and local `pitlane`; does not require Teledex             |
+| [Teledex](https://github.com/Krablante/teledex)                           | Telegram gateway/session layer | Topics, queues, live steer, `/goal` UX, and delivery/recovery around durable agent sessions | Full mode is optimized for Codez App Server v2; upstream `codex exec --json` is legacy compatibility only |
 
 ## What Is Different
 
@@ -103,9 +103,12 @@ fallback, not the strategic gateway backend.
 
 ## Quick Start
 
-Packaged Codez releases are a publication decision. Until then, use the source
-tree directly. The full setup is in [Installing and Building Codez](./docs/install.md);
-the shortest source-build path is:
+Download Linux and Windows x64 archives from the
+[Codez releases page](https://github.com/Krablante/codez/releases). Each
+archive includes a short README and installer script.
+
+The full setup is in [Installing and Building Codez](./docs/install.md). If you
+prefer to build from source, the shortest path is:
 
 ```bash
 git clone https://github.com/Krablante/codez

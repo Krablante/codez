@@ -1,8 +1,11 @@
 ## Installing and Building Codez
 
-Codez is published here as a source projection. Packaged Codez releases and
-package names are still a publication decision, so the reliable public install
-path today is to build this repository directly.
+Codez is published here as a source projection with release archives for Linux
+x64 and Windows x64 on the
+[Codez releases page](https://github.com/Krablante/codez/releases).
+
+The release archives include a short README and installer script. Verify the
+downloaded archive against the release `SHA256SUMS` file before installing.
 
 ### System Requirements
 
@@ -67,8 +70,8 @@ For protocol details, transports, auth modes, and JSON-RPC lifecycle, see
 ### Upstream Package Compatibility
 
 Upstream package names such as `@openai/codex` remain relevant for compatibility
-with inherited Codex docs and tooling. They are not the Codez publication story
-for this repository unless a future Codez release explicitly says so.
+with inherited Codex docs and tooling. They are not Codez release artifacts for
+this repository.
 
 ## Tracing / verbose logging
 
