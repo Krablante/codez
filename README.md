@@ -104,14 +104,20 @@ fallback, not the strategic gateway backend.
 ## Quick Start
 
 Packaged Codez releases are a publication decision. Until then, use the source
-tree directly:
+tree directly. The full setup is in [Installing and Building Codez](./docs/install.md);
+the shortest source-build path is:
 
 ```bash
 git clone https://github.com/Krablante/codez
-cd codez
-pnpm install
-just install
-just codex --help
+cd codez/codex-rs
+cargo build
+cargo run --bin codex -- --help
+```
+
+Gateway integrations should use the App Server v2 runtime surface:
+
+```bash
+cargo run --bin codex -- app-server --listen stdio://
 ```
 
 For upstream Codex usage, package names and official setup are still documented

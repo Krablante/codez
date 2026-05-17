@@ -1,5 +1,9 @@
 # Configuration
 
+Codez inherits upstream Codex configuration behavior. Use the upstream docs for
+baseline settings, and use the Codez docs for fork-specific runtime, App Server
+v2, prompt-pruning, and plugin behavior.
+
 For basic configuration instructions, see [this documentation](https://developers.openai.com/codex/config-basic).
 
 For advanced configuration instructions, see [this documentation](https://developers.openai.com/codex/config-advanced).
