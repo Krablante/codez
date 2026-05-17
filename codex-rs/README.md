@@ -1,5 +1,12 @@
 # Codex CLI (Rust Implementation)
 
+> Codez projection note: this file is inherited upstream Codex documentation.
+> For Codez-specific source install guidance, use the repository root
+> [`README.md`](../README.md) and [`docs/install.md`](../docs/install.md).
+> Codez full-mode gateway integrations should target App Server v2; upstream
+> package installs are compatibility references unless a Codez release says
+> otherwise.
+
 We provide Codex CLI as a standalone executable to ensure a zero-dependency install.
 
 ## Installing Codex

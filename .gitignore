@@ -97,3 +97,6 @@ __pycache__/
 # Local agent/operator overlays
 AGENTS.md
 AGENTS.local.md
+.agents/
+codez.toml
+runtime.env

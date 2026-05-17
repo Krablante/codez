@@ -1,5 +1,9 @@
 # Codex SDK
 
+> Codez projection note: this README is inherited upstream-compatible SDK
+> documentation. Codez has not finalized a separate public SDK/package release
+> story; use the root Codez install docs for the current source workflow.
+
 Embed the Codex agent in your workflows and apps.
 
 The TypeScript SDK wraps the `codex` CLI from `@openai/codex`. It spawns the CLI and exchanges JSONL events over stdin/stdout.

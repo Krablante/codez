@@ -1,6 +1,10 @@
-## Installing & building
+## Installing and Building Codez
 
-### System requirements
+Codez is published here as a source projection. Packaged Codez releases and
+package names are still a publication decision, so the reliable public install
+path today is to build this repository directly.
+
+### System Requirements
 
 | Requirement                 | Details                                                         |
 | --------------------------- | --------------------------------------------------------------- |
@@ -8,16 +12,13 @@
 | Git (optional, recommended) | 2.23+ for built-in PR helpers                                   |
 | RAM                         | 4-GB minimum (8-GB recommended)                                 |
 
-### DotSlash
+### Build from Source
 
-The GitHub Release also contains a [DotSlash](https://dotslash-cli.com/) file for the Codex CLI named `codex`. Using a DotSlash file makes it possible to make a lightweight commit to source control to ensure all contributors use the same version of an executable, regardless of what platform they use for development.
-
-### Build from source
+Clone the Codez public source tree and build the Rust workspace:
 
 ```bash
-# Clone the repository and navigate to the root of the Cargo workspace.
-git clone https://github.com/openai/codex.git
-cd codex/codex-rs
+git clone https://github.com/Krablante/codez.git
+cd codez/codex-rs
 
 # Install the Rust toolchain, if necessary.
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -29,7 +30,7 @@ cargo install --locked just
 # Optional: install nextest for the `just test` helper
 cargo install --locked cargo-nextest
 
-# Build Codex.
+# Build Codez.
 cargo build
 
 # Launch the TUI with a sample prompt.
@@ -48,6 +49,26 @@ just test
 # If you specifically want full feature coverage, use:
 cargo test --all-features
 ```
+
+### App Server v2 Path
+
+Codez App Server v2 is the primary runtime surface for gateway integrations
+such as Teledex full mode. Build the same workspace, then use the `codex
+app-server` command:
+
+```bash
+cd codez/codex-rs
+cargo run --bin codex -- app-server --listen stdio://
+```
+
+For protocol details, transports, auth modes, and JSON-RPC lifecycle, see
+[`codex-rs/app-server/README.md`](../codex-rs/app-server/README.md).
+
+### Upstream Package Compatibility
+
+Upstream package names such as `@openai/codex` remain relevant for compatibility
+with inherited Codex docs and tooling. They are not the Codez publication story
+for this repository unless a future Codez release explicitly says so.
 
 ## Tracing / verbose logging
 
