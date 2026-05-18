@@ -127,11 +127,29 @@ impl ToolHandler for ExecCommandHandler {
             return None;
         };
 
-        parse_arguments::<ExecCommandArgs>(arguments)
+        let environment_args: ExecCommandEnvironmentArgs = parse_arguments(arguments).ok()?;
+        let turn_environment = resolve_tool_environment(
+            invocation.turn.as_ref(),
+            environment_args.environment_id.as_deref(),
+        )
+        .ok()
+        .flatten()?;
+        let cwd = environment_args
+            .workdir
+            .as_deref()
+            .filter(|workdir| !workdir.is_empty())
+            .map_or_else(
+                || turn_environment.cwd.clone(),
+                |workdir| turn_environment.cwd.join(workdir),
+            );
+        parse_arguments_with_base_path::<ExecCommandArgs>(arguments, &cwd)
             .ok()
             .map(|args| PreToolUsePayload {
                 tool_name: HookToolName::bash(),
-                tool_input: serde_json::json!({ "command": args.cmd }),
+                tool_input: serde_json::json!({
+                    "command": args.cmd,
+                    "workdir": cwd.display().to_string(),
+                }),
             })
     }
 

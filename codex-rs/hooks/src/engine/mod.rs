@@ -48,6 +48,10 @@ pub(crate) struct ConfiguredHandler {
     pub status_message: Option<String>,
     pub source_path: AbsolutePathBuf,
     pub source: HookSource,
+    pub key: String,
+    pub plugin_id: Option<String>,
+    pub current_hash: String,
+    pub trust_status: HookTrustStatus,
     pub display_order: i64,
     pub env: HashMap<String, String>,
 }

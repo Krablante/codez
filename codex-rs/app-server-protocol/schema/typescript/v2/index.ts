@@ -153,6 +153,7 @@ export type { HookMigration } from "./HookMigration";
 export type { HookOutputEntry } from "./HookOutputEntry";
 export type { HookOutputEntryKind } from "./HookOutputEntryKind";
 export type { HookPromptFragment } from "./HookPromptFragment";
+export type { HookRunEconomy } from "./HookRunEconomy";
 export type { HookRunStatus } from "./HookRunStatus";
 export type { HookRunSummary } from "./HookRunSummary";
 export type { HookScope } from "./HookScope";

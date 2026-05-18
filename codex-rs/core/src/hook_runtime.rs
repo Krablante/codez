@@ -24,6 +24,7 @@ use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::HookCompletedEvent;
 use codex_protocol::protocol::HookEventName;
+use codex_protocol::protocol::HookRunEconomy;
 use codex_protocol::protocol::HookRunStatus;
 use codex_protocol::protocol::HookRunSummary;
 use codex_protocol::protocol::HookSource;
@@ -165,17 +166,14 @@ pub(crate) async fn run_pre_tool_use_hooks(
     emit_hook_started_events(sess, turn_context, preview_runs).await;
 
     let PreToolUseOutcome {
-        hook_events,
+        mut hook_events,
         should_block,
         block_reason,
         updated_input,
         additional_contexts,
     } = hooks.run_pre_tool_use(request).await;
-    emit_hook_completed_events(sess, turn_context, hook_events).await;
-    record_additional_contexts(sess, turn_context, additional_contexts).await;
-
     let block_message = if should_block {
-        block_reason.map(|reason| {
+        block_reason.as_ref().map(|reason| {
             if (tool_name.name() == "Bash" || tool_name.name() == "apply_patch")
                 && let Some(command) = tool_input.get("command").and_then(Value::as_str)
             {
@@ -190,6 +188,15 @@ pub(crate) async fn run_pre_tool_use_hooks(
     } else {
         None
     };
+    attach_pre_tool_use_economy(
+        &mut hook_events,
+        tool_input,
+        updated_input.as_ref(),
+        should_block,
+        block_message.as_deref(),
+    );
+    emit_hook_completed_events(sess, turn_context, hook_events).await;
+    record_additional_contexts(sess, turn_context, additional_contexts).await;
 
     PreToolUseHookRunOutcome {
         block_message,
@@ -245,6 +252,7 @@ pub(crate) async fn run_post_tool_use_hooks(
     matcher_aliases: Vec<String>,
     tool_input: Value,
     tool_response: Value,
+    economy: Option<HookRunEconomy>,
 ) -> PostToolUseOutcome {
     let request = PostToolUseRequest {
         session_id: sess.conversation_id,
@@ -263,9 +271,156 @@ pub(crate) async fn run_post_tool_use_hooks(
     let preview_runs = hooks.preview_post_tool_use(&request);
     emit_hook_started_events(sess, turn_context, preview_runs).await;
 
-    let outcome = hooks.run_post_tool_use(request).await;
+    let mut outcome = hooks.run_post_tool_use(request).await;
+    attach_post_tool_use_economy(
+        &mut outcome.hook_events,
+        economy,
+        outcome.should_stop,
+        outcome.feedback_message.as_deref(),
+        outcome.stop_reason.as_deref(),
+    );
     emit_hook_completed_events(sess, turn_context, outcome.hook_events.clone()).await;
     outcome
+}
+
+fn attach_pre_tool_use_economy(
+    hook_events: &mut [HookCompletedEvent],
+    original_input: &Value,
+    updated_input: Option<&Value>,
+    should_block: bool,
+    block_message: Option<&str>,
+) {
+    if hook_events.is_empty() {
+        return;
+    }
+
+    let economy = if should_block {
+        economy_for_text_replacement("block", original_input, block_message.unwrap_or_default())
+    } else {
+        let replacement_input = updated_input.unwrap_or(original_input);
+        economy_for_json_values(
+            if updated_input.is_some_and(|updated| updated != original_input) {
+                "rewrite"
+            } else {
+                "pass"
+            },
+            original_input,
+            replacement_input,
+        )
+    };
+
+    if economy.decision_type.as_deref() == Some("pass") {
+        for event in hook_events
+            .iter_mut()
+            .filter(|event| matches!(event.run.status, HookRunStatus::Completed))
+        {
+            event.run.economy = Some(economy.clone());
+        }
+    } else if let Some(event) = hook_events.iter_mut().rev().find(|event| {
+        matches!(
+            event.run.status,
+            HookRunStatus::Completed | HookRunStatus::Blocked
+        )
+    }) {
+        event.run.economy = Some(economy);
+    }
+}
+
+fn attach_post_tool_use_economy(
+    hook_events: &mut [HookCompletedEvent],
+    base_economy: Option<HookRunEconomy>,
+    should_stop: bool,
+    feedback_message: Option<&str>,
+    stop_reason: Option<&str>,
+) {
+    if hook_events.is_empty() {
+        return;
+    }
+
+    let mut economy = base_economy.unwrap_or_default();
+    if let Some(replacement) = feedback_message.or(stop_reason) {
+        let replacement_bytes = replacement.as_bytes();
+        economy.decision_type = Some(if should_stop {
+            "stop".to_string()
+        } else if replacement.starts_with("[rtk-output-guard: output compacted]") {
+            "compact".to_string()
+        } else {
+            "feedback".to_string()
+        });
+        economy.replacement_bytes = Some(replacement_bytes.len() as u64);
+        economy.model_visible_bytes = Some(replacement_bytes.len() as u64);
+        if let Some(original_visible) = economy.output_model_visible_bytes {
+            economy.estimated_saved_tokens = Some(estimated_token_delta(
+                original_visible as i64,
+                replacement_bytes.len() as i64,
+            ));
+        }
+        if let Some(event) = hook_events.iter_mut().rev().find(|event| {
+            matches!(
+                event.run.status,
+                HookRunStatus::Completed | HookRunStatus::Blocked | HookRunStatus::Stopped
+            )
+        }) {
+            if matches!(event.run.status, HookRunStatus::Blocked) && !should_stop {
+                economy.decision_type = Some("block".to_string());
+            }
+            event.run.economy = Some(economy);
+        }
+    } else {
+        economy
+            .decision_type
+            .get_or_insert_with(|| "pass".to_string());
+        for event in hook_events
+            .iter_mut()
+            .filter(|event| matches!(event.run.status, HookRunStatus::Completed))
+        {
+            event.run.economy = Some(economy.clone());
+        }
+    }
+}
+
+fn economy_for_json_values(
+    decision_type: &str,
+    original: &Value,
+    replacement: &Value,
+) -> HookRunEconomy {
+    let original_bytes = serde_json::to_vec(original).unwrap_or_default();
+    let replacement_bytes = serde_json::to_vec(replacement).unwrap_or_default();
+    HookRunEconomy {
+        decision_type: Some(decision_type.to_string()),
+        original_bytes: Some(original_bytes.len() as u64),
+        replacement_bytes: Some(replacement_bytes.len() as u64),
+        model_visible_bytes: Some(replacement_bytes.len() as u64),
+        estimated_saved_tokens: Some(estimated_token_delta(
+            original_bytes.len() as i64,
+            replacement_bytes.len() as i64,
+        )),
+        ..Default::default()
+    }
+}
+
+fn economy_for_text_replacement(
+    decision_type: &str,
+    original: &Value,
+    replacement: &str,
+) -> HookRunEconomy {
+    let original_bytes = serde_json::to_vec(original).unwrap_or_default();
+    let replacement_bytes = replacement.as_bytes();
+    HookRunEconomy {
+        decision_type: Some(decision_type.to_string()),
+        original_bytes: Some(original_bytes.len() as u64),
+        replacement_bytes: Some(replacement_bytes.len() as u64),
+        model_visible_bytes: Some(replacement_bytes.len() as u64),
+        estimated_saved_tokens: Some(estimated_token_delta(
+            original_bytes.len() as i64,
+            replacement_bytes.len() as i64,
+        )),
+        ..Default::default()
+    }
+}
+
+fn estimated_token_delta(original_bytes: i64, replacement_bytes: i64) -> i64 {
+    (original_bytes - replacement_bytes) / 4
 }
 
 pub(crate) async fn run_pre_compact_hooks(
@@ -611,9 +766,11 @@ mod tests {
     use super::hook_run_metric_tags;
     use crate::session::tests::make_session_and_context;
     use codex_protocol::protocol::HookCompletedEvent;
+    use codex_protocol::protocol::HookRunEconomy;
     use codex_protocol::protocol::HookRunSummary;
     use codex_utils_absolute_path::test_support::PathBufExt;
     use codex_utils_absolute_path::test_support::test_path_buf;
+    use serde_json::json;
 
     #[test]
     fn additional_context_messages_stay_separate_and_ordered() {
@@ -724,6 +881,215 @@ mod tests {
         );
     }
 
+    #[test]
+    fn pre_tool_use_economy_marks_pass_rewrite_and_block() {
+        let original = json!({ "command": "cat fixtures/smoke.js" });
+        let replacement = json!({ "command": "pitlane lines fixtures/smoke.js 1 120" });
+
+        let mut pass_events = vec![
+            HookCompletedEvent {
+                turn_id: None,
+                run: sample_hook_run(HookRunStatus::Completed, HookSource::Plugin),
+            },
+            HookCompletedEvent {
+                turn_id: None,
+                run: sample_hook_run(HookRunStatus::Failed, HookSource::Plugin),
+            },
+        ];
+        super::attach_pre_tool_use_economy(&mut pass_events, &original, None, false, None);
+        assert_eq!(
+            pass_events[0]
+                .run
+                .economy
+                .as_ref()
+                .and_then(|economy| { economy.decision_type.as_deref() }),
+            Some("pass")
+        );
+        assert!(pass_events[1].run.economy.is_none());
+
+        let mut rewrite_events = vec![
+            HookCompletedEvent {
+                turn_id: None,
+                run: sample_hook_run(HookRunStatus::Completed, HookSource::Plugin),
+            },
+            HookCompletedEvent {
+                turn_id: None,
+                run: sample_hook_run(HookRunStatus::Completed, HookSource::Plugin),
+            },
+        ];
+        super::attach_pre_tool_use_economy(
+            &mut rewrite_events,
+            &original,
+            Some(&replacement),
+            false,
+            None,
+        );
+        assert!(rewrite_events[0].run.economy.is_none());
+        let rewrite = rewrite_events[1].run.economy.as_ref().unwrap();
+        assert_eq!(rewrite.decision_type.as_deref(), Some("rewrite"));
+        assert_eq!(
+            rewrite.original_bytes,
+            Some(serde_json::to_vec(&original).unwrap().len() as u64)
+        );
+        assert_eq!(
+            rewrite.replacement_bytes,
+            Some(serde_json::to_vec(&replacement).unwrap().len() as u64)
+        );
+
+        let mut block_events = vec![
+            HookCompletedEvent {
+                turn_id: None,
+                run: sample_hook_run(HookRunStatus::Completed, HookSource::Plugin),
+            },
+            HookCompletedEvent {
+                turn_id: None,
+                run: sample_hook_run(HookRunStatus::Blocked, HookSource::Plugin),
+            },
+        ];
+        let block_message = "Command blocked by PreToolUse hook: unsafe. Command: rm -rf /";
+        super::attach_pre_tool_use_economy(
+            &mut block_events,
+            &original,
+            None,
+            true,
+            Some(block_message),
+        );
+        assert!(block_events[0].run.economy.is_none());
+        let blocked = block_events[1].run.economy.as_ref().unwrap();
+        assert_eq!(blocked.decision_type.as_deref(), Some("block"));
+        assert_eq!(
+            blocked.replacement_bytes,
+            Some(block_message.as_bytes().len() as u64)
+        );
+        assert_eq!(blocked.model_visible_bytes, blocked.replacement_bytes);
+        assert_eq!(blocked.exact_output_reason, None);
+    }
+
+    #[test]
+    fn post_tool_use_economy_marks_pass_compact_feedback_and_stop() {
+        let base = HookRunEconomy {
+            command_class: Some("unified_exec".to_string()),
+            output_model_visible_bytes: Some(1000),
+            ..Default::default()
+        };
+
+        let mut pass_events = vec![
+            HookCompletedEvent {
+                turn_id: None,
+                run: sample_hook_run(HookRunStatus::Completed, HookSource::Plugin),
+            },
+            HookCompletedEvent {
+                turn_id: None,
+                run: sample_hook_run(HookRunStatus::Failed, HookSource::Plugin),
+            },
+        ];
+        super::attach_post_tool_use_economy(
+            &mut pass_events,
+            Some(base.clone()),
+            false,
+            None,
+            None,
+        );
+        assert_eq!(
+            pass_events[0]
+                .run
+                .economy
+                .as_ref()
+                .and_then(|economy| { economy.decision_type.as_deref() }),
+            Some("pass")
+        );
+        assert!(pass_events[1].run.economy.is_none());
+
+        let mut compact_events = vec![HookCompletedEvent {
+            turn_id: None,
+            run: sample_hook_run(HookRunStatus::Completed, HookSource::Plugin),
+        }];
+        let compact_message = "[rtk-output-guard: output compacted]\nvisible summary";
+        super::attach_post_tool_use_economy(
+            &mut compact_events,
+            Some(base.clone()),
+            false,
+            Some(compact_message),
+            None,
+        );
+        let compact = compact_events[0].run.economy.as_ref().unwrap();
+        assert_eq!(compact.decision_type.as_deref(), Some("compact"));
+        assert_eq!(
+            compact.replacement_bytes,
+            Some(compact_message.as_bytes().len() as u64)
+        );
+        assert_eq!(
+            compact.estimated_saved_tokens,
+            Some((1000 - compact_message.as_bytes().len() as i64) / 4)
+        );
+
+        let mut feedback_events = vec![HookCompletedEvent {
+            turn_id: None,
+            run: sample_hook_run(HookRunStatus::Completed, HookSource::Plugin),
+        }];
+        super::attach_post_tool_use_economy(
+            &mut feedback_events,
+            Some(base.clone()),
+            false,
+            Some("short feedback"),
+            None,
+        );
+        assert_eq!(
+            feedback_events[0]
+                .run
+                .economy
+                .as_ref()
+                .unwrap()
+                .decision_type
+                .as_deref(),
+            Some("feedback")
+        );
+
+        let mut blocked_events = vec![HookCompletedEvent {
+            turn_id: None,
+            run: sample_hook_run(HookRunStatus::Blocked, HookSource::Plugin),
+        }];
+        super::attach_post_tool_use_economy(
+            &mut blocked_events,
+            Some(base.clone()),
+            false,
+            Some("blocked result"),
+            None,
+        );
+        assert_eq!(
+            blocked_events[0]
+                .run
+                .economy
+                .as_ref()
+                .unwrap()
+                .decision_type
+                .as_deref(),
+            Some("block")
+        );
+
+        let mut stop_events = vec![HookCompletedEvent {
+            turn_id: None,
+            run: sample_hook_run(HookRunStatus::Stopped, HookSource::Plugin),
+        }];
+        super::attach_post_tool_use_economy(
+            &mut stop_events,
+            Some(base),
+            true,
+            None,
+            Some("stop now"),
+        );
+        assert_eq!(
+            stop_events[0]
+                .run
+                .economy
+                .as_ref()
+                .unwrap()
+                .decision_type
+                .as_deref(),
+            Some("stop")
+        );
+    }
+
     fn sample_hook_run(status: HookRunStatus, source: HookSource) -> HookRunSummary {
         HookRunSummary {
             id: "stop:0:/tmp/hooks.json".to_string(),
@@ -733,6 +1099,9 @@ mod tests {
             scope: HookScope::Turn,
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source,
+            key: Some("test-key".to_string()),
+            plugin_id: None,
+            trust_status: Some(codex_protocol::protocol::HookTrustStatus::Trusted),
             display_order: 0,
             status,
             status_message: None,
@@ -740,6 +1109,7 @@ mod tests {
             completed_at: Some(37),
             duration_ms: Some(27),
             entries: Vec::new(),
+            economy: None,
         }
     }
 }

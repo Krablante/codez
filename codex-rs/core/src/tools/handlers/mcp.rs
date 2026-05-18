@@ -64,6 +64,7 @@ impl ToolHandler for McpHandler {
             tool_use_id: invocation.call_id.clone(),
             tool_input: result.tool_input.clone(),
             tool_response,
+            economy: None,
         })
     }
 
@@ -233,6 +234,7 @@ mod tests {
                     }],
                     "structuredContent": { "bytes": 5 }
                 }),
+                economy: None,
             })
         );
     }

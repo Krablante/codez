@@ -1538,6 +1538,37 @@ pub struct HookOutputEntry {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+pub struct HookRunEconomy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bypass_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact_output_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacement_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_visible_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_original_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_model_visible_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_budget: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_token_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_saved_tokens: Option<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifact_refs: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
 pub struct HookRunSummary {
@@ -1549,6 +1580,12 @@ pub struct HookRunSummary {
     pub source_path: AbsolutePathBuf,
     #[serde(default)]
     pub source: HookSource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_status: Option<HookTrustStatus>,
     pub display_order: i64,
     pub status: HookRunStatus,
     pub status_message: Option<String>,
@@ -1559,6 +1596,8 @@ pub struct HookRunSummary {
     #[ts(type = "number | null")]
     pub duration_ms: Option<i64>,
     pub entries: Vec<HookOutputEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub economy: Option<HookRunEconomy>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]

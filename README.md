@@ -75,12 +75,12 @@ runtime work aimed at long local-agent sessions:
 The Codez stack is modular. Each layer can be used on its own unless a higher
 layer explicitly opts into it.
 
-| Layer                                                                     | Public surface                 | Responsibility                                                                              | Dependency                                                                                                            |
-| ------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [Codez](https://github.com/Krablante/codez)                               | Codex-compatible runtime       | App Server v2, goal RPC, long-session hardening, prompt pruning, and plugin hooks           | Does not require Teledex                                                                                              |
-| [RTK Codex Plugin](https://github.com/Krablante/rtk-codex-plugin)         | Optional Codex plugin          | Shell/token safety through `rtk rewrite` and bounded output guarding                        | Requires a Codex-compatible plugin-hook runtime; does not require Teledex                                             |
-| [Pitlane Codex Plugin](https://github.com/Krablante/pitlane-codex-plugin) | Optional Codex plugin          | Code-navigation/token-saving rewrites through a host-local `pitlane` CLI                    | Requires a Codex-compatible plugin-hook runtime and local `pitlane`; does not require Teledex                         |
-| [Teledex](https://github.com/Krablante/teledex)                           | Telegram gateway/session layer | Topics, queues, live steer, `/goal` UX, and delivery/recovery around durable agent sessions | Requires Codez App Server v2 for normal public use; upstream `codex exec --json` is legacy compatibility only        |
+| Layer                                                                     | Public surface                 | Responsibility                                                                              | Dependency                                                                                                |
+| ------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [Codez](https://github.com/Krablante/codez)                               | Codex-compatible runtime       | App Server v2, goal RPC, long-session hardening, prompt pruning, and plugin hooks           | Does not require Teledex                                                                                  |
+| [RTK Codex Plugin](https://github.com/Krablante/rtk-codex-plugin)         | Optional Codex plugin          | Shell/token safety through `rtk rewrite` and bounded output guarding                        | Requires a Codex-compatible plugin-hook runtime; does not require Teledex                                 |
+| [Pitlane Codex Plugin](https://github.com/Krablante/pitlane-codex-plugin) | Optional Codex plugin          | Code-navigation/token-saving rewrites through a host-local `pitlane` CLI                    | Requires a Codex-compatible plugin-hook runtime and local `pitlane`; does not require Teledex             |
+| [Teledex](https://github.com/Krablante/teledex)                           | Telegram gateway/session layer | Topics, queues, live steer, `/goal` UX, and delivery/recovery around durable agent sessions | Full mode is optimized for Codez App Server v2; upstream `codex exec --json` is legacy compatibility only |
 
 ## What Is Different
 
@@ -97,9 +97,9 @@ The Telegram gateway layer is public at:
 
 https://github.com/Krablante/teledex
 
-Teledex is a Codez-first gateway. Its normal public path is built around Codez
-App Server v2; upstream `codex exec --json` is documented there as a legacy
-compatibility fallback, not the strategic gateway backend.
+Teledex is a Codez-first gateway. Its full mode is built around Codez App Server
+v2; upstream `codex exec --json` is documented there as a legacy compatibility
+fallback, not the strategic gateway backend.
 
 ## Quick Start
 

@@ -28,6 +28,7 @@ use codex_hooks::HookToolInputLocalShell;
 use codex_hooks::HookToolKind;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::HookRunEconomy;
 use codex_tools::ConfiguredToolSpec;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
@@ -231,6 +232,9 @@ pub(crate) struct PostToolUsePayload {
     pub(crate) tool_input: Value,
     /// Tool result exposed at `tool_response`.
     pub(crate) tool_response: Value,
+    /// Runtime-only model-visible economy metadata. This is not serialized to
+    /// hook stdin; hooks keep their stable tool contract.
+    pub(crate) economy: Option<HookRunEconomy>,
 }
 
 trait AnyToolHandler: Send + Sync {
@@ -538,6 +542,7 @@ impl ToolRegistry {
                     post_tool_use_payload.tool_name.matcher_aliases().to_vec(),
                     post_tool_use_payload.tool_input,
                     post_tool_use_payload.tool_response,
+                    post_tool_use_payload.economy,
                 )
                 .await,
             )

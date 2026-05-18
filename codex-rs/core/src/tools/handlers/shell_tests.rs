@@ -332,6 +332,7 @@ async fn build_post_tool_use_payload_uses_tool_output_wire_value() {
             tool_use_id: "call-42".to_string(),
             tool_input: json!({ "command": "printf shell command" }),
             tool_response: json!("shell output"),
+            economy: None,
         })
     );
 }

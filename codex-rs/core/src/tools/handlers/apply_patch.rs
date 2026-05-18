@@ -366,6 +366,7 @@ impl ToolHandler for ApplyPatchHandler {
                 "command": apply_patch_payload_command(&invocation.payload)?,
             }),
             tool_response,
+            economy: None,
         })
     }
 

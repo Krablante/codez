@@ -6177,6 +6177,104 @@
       ],
       "type": "object"
     },
+    "HookRunEconomy": {
+      "properties": {
+        "artifactRefs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "bypassReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commandClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decisionType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "estimatedSavedTokens": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "exactOutputReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelVisibleBytes": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "originalBytes": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "originalTokenCount": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "outputModelVisibleBytes": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "outputOriginalBytes": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replacementBytes": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tokenBudget": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "HookRunStatus": {
       "enum": [
         "running",
@@ -6207,6 +6305,17 @@
             "null"
           ]
         },
+        "economy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/HookRunEconomy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "entries": {
           "items": {
             "$ref": "#/definitions/HookOutputEntry"
@@ -6224,6 +6333,20 @@
         },
         "id": {
           "type": "string"
+        },
+        "key": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pluginId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "scope": {
           "$ref": "#/definitions/HookScope"
@@ -6251,6 +6374,17 @@
             "string",
             "null"
           ]
+        },
+        "trustStatus": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/HookTrustStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [

@@ -20,6 +20,7 @@ use super::apply_updated_local_shell_input;
 use super::local_shell_payload_command;
 use super::run_exec_like;
 use super::shell_handler::ShellHandler;
+use super::shell_hook_tool_input;
 
 #[derive(Default)]
 pub struct LocalShellHandler {
@@ -66,7 +67,7 @@ impl ToolHandler for LocalShellHandler {
     fn pre_tool_use_payload(&self, invocation: &ToolInvocation) -> Option<PreToolUsePayload> {
         local_shell_payload_command(&invocation.payload).map(|command| PreToolUsePayload {
             tool_name: HookToolName::bash(),
-            tool_input: serde_json::json!({ "command": command }),
+            tool_input: shell_hook_tool_input(command, invocation.turn.cwd.as_path()),
         })
     }
 
@@ -89,8 +90,9 @@ impl ToolHandler for LocalShellHandler {
         Some(PostToolUsePayload {
             tool_name: HookToolName::bash(),
             tool_use_id: invocation.call_id.clone(),
-            tool_input: serde_json::json!({ "command": command }),
+            tool_input: shell_hook_tool_input(command, invocation.turn.cwd.as_path()),
             tool_response,
+            economy: None,
         })
     }
 

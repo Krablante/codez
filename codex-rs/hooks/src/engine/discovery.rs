@@ -427,7 +427,7 @@ fn append_matcher_groups(
                     let trust_status =
                         hook_trust_status(source.is_managed, &current_hash, trusted_hash);
                     hook_entries.push(HookListEntry {
-                        key,
+                        key: key.clone(),
                         event_name,
                         handler_type: HookHandlerType::Command,
                         matcher: matcher.map(ToOwned::to_owned),
@@ -440,7 +440,7 @@ fn append_matcher_groups(
                         display_order: *display_order,
                         enabled,
                         is_managed: source.is_managed,
-                        current_hash,
+                        current_hash: current_hash.clone(),
                         trust_status,
                     });
                     if enabled
@@ -457,6 +457,10 @@ fn append_matcher_groups(
                             status_message,
                             source_path: source.path.clone(),
                             source: source.source,
+                            key,
+                            plugin_id: source.plugin_id.clone(),
+                            current_hash,
+                            trust_status,
                             display_order: *display_order,
                             env: source.env.clone(),
                         });
@@ -568,6 +572,7 @@ mod tests {
     use codex_config::HookEventsToml;
     use codex_protocol::protocol::HookEventName;
     use codex_protocol::protocol::HookSource;
+    use codex_protocol::protocol::HookTrustStatus;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use codex_utils_absolute_path::test_support::PathBufExt;
     use codex_utils_absolute_path::test_support::test_path_buf;
@@ -615,6 +620,20 @@ mod tests {
         }
     }
 
+    fn expected_current_hash(event_name: HookEventName, matcher: Option<&str>) -> String {
+        super::command_hook_hash(
+            event_name,
+            matcher,
+            &command_group(matcher),
+            HookHandlerConfig::Command {
+                command: "echo hello".to_string(),
+                timeout_sec: Some(600),
+                r#async: false,
+                status_message: None,
+            },
+        )
+    }
+
     #[test]
     fn user_prompt_submit_ignores_invalid_matcher_during_discovery() {
         let mut handlers = Vec::new();
@@ -644,6 +663,15 @@ mod tests {
                 status_message: None,
                 source_path: source_path.clone(),
                 source: hook_source(),
+                key: crate::hook_key(
+                    source_path.display().to_string().as_str(),
+                    HookEventName::UserPromptSubmit,
+                    0,
+                    0,
+                ),
+                plugin_id: None,
+                current_hash: expected_current_hash(HookEventName::UserPromptSubmit, None),
+                trust_status: HookTrustStatus::Managed,
                 display_order: 0,
                 env: std::collections::HashMap::new(),
             }]
@@ -679,6 +707,15 @@ mod tests {
                 status_message: None,
                 source_path: source_path.clone(),
                 source: hook_source(),
+                key: crate::hook_key(
+                    source_path.display().to_string().as_str(),
+                    HookEventName::PreToolUse,
+                    0,
+                    0,
+                ),
+                plugin_id: None,
+                current_hash: expected_current_hash(HookEventName::PreToolUse, Some("^Bash$")),
+                trust_status: HookTrustStatus::Managed,
                 display_order: 0,
                 env: std::collections::HashMap::new(),
             }]

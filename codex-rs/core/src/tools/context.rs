@@ -458,7 +458,7 @@ impl ExecCommandToolOutput {
         formatted_truncate_text(&text, TruncationPolicy::Tokens(max_tokens))
     }
 
-    fn response_text(&self) -> String {
+    pub(crate) fn response_text(&self) -> String {
         let mut sections = Vec::new();
 
         if !self.chunk_id.is_empty() {

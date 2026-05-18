@@ -31,7 +31,7 @@ use super::super::shell_spec::CommandToolOptions;
 use super::super::shell_spec::create_shell_command_tool;
 use super::RunExecLikeArgs;
 use super::run_exec_like;
-use super::shell_command_payload_command;
+use super::shell_hook_tool_input;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ShellCommandBackend {
@@ -176,9 +176,23 @@ impl ToolHandler for ShellCommandHandler {
     }
 
     fn pre_tool_use_payload(&self, invocation: &ToolInvocation) -> Option<PreToolUsePayload> {
-        shell_command_payload_command(&invocation.payload).map(|command| PreToolUsePayload {
+        let ToolPayload::Function { arguments } = &invocation.payload else {
+            return None;
+        };
+        let params = parse_arguments_with_base_path::<ShellCommandToolCallParams>(
+            arguments,
+            &invocation.turn.cwd,
+        )
+        .ok()?;
+        Some(PreToolUsePayload {
             tool_name: HookToolName::bash(),
-            tool_input: serde_json::json!({ "command": command }),
+            tool_input: shell_hook_tool_input(
+                params.command,
+                invocation
+                    .turn
+                    .resolve_path(params.workdir.clone())
+                    .as_path(),
+            ),
         })
     }
 
@@ -198,12 +212,26 @@ impl ToolHandler for ShellCommandHandler {
     ) -> Option<PostToolUsePayload> {
         let tool_response =
             result.post_tool_use_response(&invocation.call_id, &invocation.payload)?;
-        let command = shell_command_payload_command(&invocation.payload)?;
+        let ToolPayload::Function { arguments } = &invocation.payload else {
+            return None;
+        };
+        let params = parse_arguments_with_base_path::<ShellCommandToolCallParams>(
+            arguments,
+            &invocation.turn.cwd,
+        )
+        .ok()?;
         Some(PostToolUsePayload {
             tool_name: HookToolName::bash(),
             tool_use_id: invocation.call_id.clone(),
-            tool_input: serde_json::json!({ "command": command }),
+            tool_input: shell_hook_tool_input(
+                params.command,
+                invocation
+                    .turn
+                    .resolve_path(params.workdir.clone())
+                    .as_path(),
+            ),
             tool_response,
+            economy: None,
         })
     }
 

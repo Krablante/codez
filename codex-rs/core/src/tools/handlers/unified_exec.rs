@@ -5,18 +5,18 @@ use crate::tools::context::ExecCommandToolOutput;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
+use crate::tools::handlers::parse_arguments;
+use crate::tools::handlers::resolve_tool_environment;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::registry::PostToolUsePayload;
 use crate::unified_exec::resolve_max_tokens;
 use codex_protocol::models::AdditionalPermissionProfile;
+use codex_protocol::protocol::HookRunEconomy;
 use codex_tools::UnifiedExecShellMode;
 use codex_utils_output_truncation::TruncationPolicy;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-#[cfg(test)]
-use crate::tools::handlers::parse_arguments;
 
 mod exec_command;
 mod write_stdin;
@@ -94,12 +94,53 @@ fn post_unified_exec_tool_use_payload(
         result.event_call_id.clone()
     };
     let tool_response = result.post_tool_use_response(&tool_use_id, &invocation.payload)?;
+    let mut tool_input = serde_json::json!({ "command": command });
+    if invocation.tool_name.name == "exec_command"
+        && let Some(workdir) = exec_command_post_tool_workdir(invocation)
+    {
+        tool_input["workdir"] = serde_json::Value::String(workdir);
+    }
     Some(PostToolUsePayload {
         tool_name: HookToolName::bash(),
         tool_use_id,
-        tool_input: serde_json::json!({ "command": command }),
+        tool_input,
         tool_response,
+        economy: Some(exec_command_economy(result)),
     })
+}
+
+fn exec_command_post_tool_workdir(invocation: &ToolInvocation) -> Option<String> {
+    let ToolPayload::Function { arguments } = &invocation.payload else {
+        return None;
+    };
+
+    let environment_args: ExecCommandEnvironmentArgs = parse_arguments(arguments).ok()?;
+    let turn_environment = resolve_tool_environment(
+        invocation.turn.as_ref(),
+        environment_args.environment_id.as_deref(),
+    )
+    .ok()??;
+    let cwd = environment_args
+        .workdir
+        .as_deref()
+        .filter(|workdir| !workdir.is_empty())
+        .map_or_else(
+            || turn_environment.cwd.clone(),
+            |workdir| turn_environment.cwd.join(workdir),
+        );
+    Some(cwd.display().to_string())
+}
+
+fn exec_command_economy(result: &ExecCommandToolOutput) -> HookRunEconomy {
+    let visible_response = result.response_text();
+    HookRunEconomy {
+        command_class: Some("unified_exec".to_string()),
+        output_original_bytes: Some(result.raw_output.len() as u64),
+        output_model_visible_bytes: Some(visible_response.len() as u64),
+        token_budget: result.max_output_tokens.map(|value| value as u64),
+        original_token_count: result.original_token_count.map(|value| value as u64),
+        ..Default::default()
+    }
 }
 
 pub(crate) fn get_command(

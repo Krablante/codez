@@ -95,6 +95,7 @@ async fn post_tool_use_payload_uses_patch_input_and_tool_output() {
             tool_use_id: "call-apply-patch".to_string(),
             tool_input: json!({ "command": patch }),
             tool_response: json!("Success. Updated files."),
+            economy: None,
         })
     );
 }

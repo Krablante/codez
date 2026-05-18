@@ -1,5 +1,4 @@
 use codex_features::Feature;
-use codex_protocol::models::ShellCommandToolCallParams;
 use codex_protocol::models::ShellToolCallParams;
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
@@ -43,14 +42,29 @@ pub use shell_command::ShellCommandHandler;
 pub(crate) use shell_command::ShellCommandHandlerOptions;
 pub use shell_handler::ShellHandler;
 
-fn shell_function_payload_command(payload: &ToolPayload) -> Option<String> {
-    let ToolPayload::Function { arguments } = payload else {
+fn shell_hook_tool_input(command: String, workdir: &std::path::Path) -> JsonValue {
+    serde_json::json!({
+        "command": command,
+        "workdir": workdir.display().to_string(),
+    })
+}
+
+fn shell_function_hook_tool_input(invocation: &ToolInvocation) -> Option<JsonValue> {
+    let ToolPayload::Function { arguments } = &invocation.payload else {
         return None;
     };
 
     parse_arguments::<ShellToolCallParams>(arguments)
         .ok()
-        .map(|params| codex_shell_command::parse_command::shlex_join(&params.command))
+        .map(|params| {
+            shell_hook_tool_input(
+                codex_shell_command::parse_command::shlex_join(&params.command),
+                invocation
+                    .turn
+                    .resolve_path(params.workdir.clone())
+                    .as_path(),
+            )
+        })
 }
 
 fn local_shell_payload_command(payload: &ToolPayload) -> Option<String> {
@@ -61,16 +75,6 @@ fn local_shell_payload_command(payload: &ToolPayload) -> Option<String> {
     Some(codex_shell_command::parse_command::shlex_join(
         &params.command,
     ))
-}
-
-fn shell_command_payload_command(payload: &ToolPayload) -> Option<String> {
-    let ToolPayload::Function { arguments } = payload else {
-        return None;
-    };
-
-    parse_arguments::<ShellCommandToolCallParams>(arguments)
-        .ok()
-        .map(|params| params.command)
 }
 
 fn updated_shell_argv(
@@ -121,9 +125,9 @@ struct RunExecLikeArgs {
 }
 
 fn shell_function_pre_tool_use_payload(invocation: &ToolInvocation) -> Option<PreToolUsePayload> {
-    shell_function_payload_command(&invocation.payload).map(|command| PreToolUsePayload {
+    shell_function_hook_tool_input(invocation).map(|tool_input| PreToolUsePayload {
         tool_name: HookToolName::bash(),
-        tool_input: serde_json::json!({ "command": command }),
+        tool_input,
     })
 }
 
@@ -132,12 +136,13 @@ fn shell_function_post_tool_use_payload(
     result: &FunctionToolOutput,
 ) -> Option<PostToolUsePayload> {
     let tool_response = result.post_tool_use_response(&invocation.call_id, &invocation.payload)?;
-    let command = shell_function_payload_command(&invocation.payload)?;
+    let tool_input = shell_function_hook_tool_input(invocation)?;
     Some(PostToolUsePayload {
         tool_name: HookToolName::bash(),
         tool_use_id: invocation.call_id.clone(),
-        tool_input: serde_json::json!({ "command": command }),
+        tool_input,
         tool_response,
+        economy: None,
     })
 }
 

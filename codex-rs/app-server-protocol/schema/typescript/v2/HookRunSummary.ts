@@ -6,8 +6,10 @@ import type { HookEventName } from "./HookEventName";
 import type { HookExecutionMode } from "./HookExecutionMode";
 import type { HookHandlerType } from "./HookHandlerType";
 import type { HookOutputEntry } from "./HookOutputEntry";
+import type { HookRunEconomy } from "./HookRunEconomy";
 import type { HookRunStatus } from "./HookRunStatus";
 import type { HookScope } from "./HookScope";
 import type { HookSource } from "./HookSource";
+import type { HookTrustStatus } from "./HookTrustStatus";
 
-export type HookRunSummary = { id: string, eventName: HookEventName, handlerType: HookHandlerType, executionMode: HookExecutionMode, scope: HookScope, sourcePath: AbsolutePathBuf, source: HookSource, displayOrder: bigint, status: HookRunStatus, statusMessage: string | null, startedAt: bigint, completedAt: bigint | null, durationMs: bigint | null, entries: Array<HookOutputEntry>, };
+export type HookRunSummary = { id: string, eventName: HookEventName, handlerType: HookHandlerType, executionMode: HookExecutionMode, scope: HookScope, sourcePath: AbsolutePathBuf, source: HookSource, key: string | null, pluginId: string | null, trustStatus: HookTrustStatus | null, displayOrder: bigint, status: HookRunStatus, statusMessage: string | null, startedAt: bigint, completedAt: bigint | null, durationMs: bigint | null, entries: Array<HookOutputEntry>, economy: HookRunEconomy | null, };

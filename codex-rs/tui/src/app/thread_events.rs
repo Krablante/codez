@@ -410,6 +410,9 @@ mod tests {
                 scope: AppServerHookScope::Turn,
                 source_path: test_path_buf("/tmp/hooks.json").abs(),
                 source: codex_app_server_protocol::HookSource::User,
+                key: Some("test-key".to_string()),
+                plugin_id: None,
+                trust_status: Some(codex_app_server_protocol::HookTrustStatus::Trusted),
                 display_order: 0,
                 status: AppServerHookRunStatus::Running,
                 status_message: Some("checking go-workflow input policy".to_string()),
@@ -417,6 +420,7 @@ mod tests {
                 completed_at: None,
                 duration_ms: None,
                 entries: Vec::new(),
+                economy: None,
             },
         })
     }
@@ -433,6 +437,9 @@ mod tests {
                 scope: AppServerHookScope::Turn,
                 source_path: test_path_buf("/tmp/hooks.json").abs(),
                 source: codex_app_server_protocol::HookSource::User,
+                key: Some("test-key".to_string()),
+                plugin_id: None,
+                trust_status: Some(codex_app_server_protocol::HookTrustStatus::Trusted),
                 display_order: 0,
                 status: AppServerHookRunStatus::Stopped,
                 status_message: Some("checking go-workflow input policy".to_string()),
@@ -449,6 +456,7 @@ mod tests {
                         text: "prompt blocked".to_string(),
                     },
                 ],
+                economy: None,
             },
         })
     }

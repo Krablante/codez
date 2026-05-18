@@ -72,6 +72,9 @@ pub(crate) fn running_summary(handler: &ConfiguredHandler) -> HookRunSummary {
         scope: scope_for_event(handler.event_name),
         source_path: handler.source_path.clone(),
         source: handler.source,
+        key: Some(handler.key.clone()),
+        plugin_id: handler.plugin_id.clone(),
+        trust_status: Some(handler.trust_status),
         display_order: handler.display_order,
         status: HookRunStatus::Running,
         status_message: handler.status_message.clone(),
@@ -79,6 +82,7 @@ pub(crate) fn running_summary(handler: &ConfiguredHandler) -> HookRunSummary {
         completed_at: None,
         duration_ms: None,
         entries: Vec::new(),
+        economy: None,
     }
 }
 
@@ -118,6 +122,9 @@ pub(crate) fn completed_summary(
         scope: scope_for_event(handler.event_name),
         source_path: handler.source_path.clone(),
         source: handler.source,
+        key: Some(handler.key.clone()),
+        plugin_id: handler.plugin_id.clone(),
+        trust_status: Some(handler.trust_status),
         display_order: handler.display_order,
         status,
         status_message: handler.status_message.clone(),
@@ -125,6 +132,7 @@ pub(crate) fn completed_summary(
         completed_at: Some(run_result.completed_at),
         duration_ms: Some(run_result.duration_ms),
         entries,
+        economy: None,
     }
 }
 
@@ -166,6 +174,10 @@ mod tests {
             status_message: None,
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: HookSource::User,
+            key: "test-key".to_string(),
+            plugin_id: None,
+            current_hash: "sha256:test".to_string(),
+            trust_status: codex_protocol::protocol::HookTrustStatus::Trusted,
             display_order,
             env: std::collections::HashMap::new(),
         }

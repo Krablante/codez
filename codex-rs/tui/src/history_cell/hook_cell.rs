@@ -811,6 +811,9 @@ mod tests {
             scope: codex_app_server_protocol::HookScope::Turn,
             source_path: test_path_buf("/tmp/hooks.json").abs(),
             source: codex_app_server_protocol::HookSource::User,
+            key: Some("test-key".to_string()),
+            plugin_id: None,
+            trust_status: Some(codex_app_server_protocol::HookTrustStatus::Trusted),
             display_order: 0,
             status: HookRunStatus::Running,
             status_message: Some("checking output policy".to_string()),
@@ -818,6 +821,7 @@ mod tests {
             completed_at: None,
             duration_ms: None,
             entries: Vec::new(),
+            economy: None,
         }
     }
 }
